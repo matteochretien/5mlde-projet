@@ -4,10 +4,10 @@ Projet final 5MLDE. On prédit la **RUL** (*Remaining Useful Life*) d'un disque
 dur — le nombre de jours avant sa panne — à partir de ses statistiques SMART du
 jour, sur les données publiques **Backblaze Drive Stats**.
 
-> L'objet du projet n'est pas la performance prédictive : c'est une chaîne
-> d'exploitation reproductible, tracée et démontrée de bout en bout — ingestion,
-> contrôles qualité bloquants, orchestration, registre de modèles, API,
-> feedbacks, supervision, tests de charge.
+L'objet du projet n'est pas la performance prédictive : c'est une chaîne
+d'exploitation reproductible, tracée et démontrée de bout en bout — ingestion,
+contrôles qualité bloquants, orchestration, registre de modèles, API,
+feedbacks, supervision, tests de charge.
 
 ---
 
@@ -18,7 +18,7 @@ jour, sur les données publiques **Backblaze Drive Stats**.
 | **Tâche** | Régression. `rul = date_panne - date`, en jours. |
 | **Cible** | Plafonnée à **H = 90 jours** (configurable). La valeur `90` signifie « pas de panne en vue dans l'horizon ». |
 | **Features (v1)** | L'**état du jour** uniquement : 10 attributs SMART *raw* (5, 9, 12, 187, 188, 193, 194, 197, 198, 199), le modèle de disque (top-K + modalité « autre »), la capacité en To, le constructeur. Une seule ligne Drive Stats suffit, donc l'API répond sans historique du disque. |
-| **Population** | Toutes les lignes des disques tombes en panne sur leurs 90 derniers jours, plus un échantillon déterministe de disques sains étiquetés `H`. |
+| **Population** | Toutes les lignes des disques tombés en panne sur leurs 90 derniers jours, plus un échantillon déterministe de disques sains étiquetés `H`. |
 | **Modèles** | Baseline `DummyRegressor(median)` et `HistGradientBoostingRegressor`, entraînés **en parallèle**. |
 | **Métriques** | MAE globale, **MAE sur RUL < 30 j** (la zone qui compte en exploitation), précision et rappel de l'alerte « RUL prédite < 30 j ». |
 
@@ -26,12 +26,12 @@ jour, sur les données publiques **Backblaze Drive Stats**.
 
 C'est le cœur du prétraitement, et la principale subtilité du sujet.
 
-- **Disque en panne** : `failure = 1` signifie que le disque est tombe en panne
+- **Disque en panne** : `failure = 1` signifie que le disque est tombé en panne
   **ce jour-là** — c'est sa dernière ligne dans les données. Chaque ligne de la
   fenêtre `[date_panne - H, date_panne]` reçoit `min(date_panne - date, H)`.
 - **Disque sain** : sa vraie RUL est inconnue (censure à droite). Une ligne datée
   `d` n'est étiquetée **que si le disque est encore observé vivant à `d + H`**.
-  Alors RUL >= H, donc le label plafonne `H` est *exact* : pas de biais de
+  Alors RUL >= H, donc le label plafonné à `H` est *exact* : pas de biais de
   censure. Les lignes trop récentes sont écartées, et comptées.
 
 Conséquence : le label d'une ligne du jour n'est connu que lorsque le disque
@@ -45,50 +45,25 @@ d'entraînement changent d'un run à l'autre (paramètre `--as-of`).
 
 ![Architecture de la chaîne MLOps](docs/architecture.svg)
 
-Vue simplifiée :
-
-```
- Backblaze (zip)  ──►  ingestion (cache + sha256)  ──►  data/raw/ (CSV, gitignore)
-         │                                                      │
- generateur synthetique ───────────────────────────────────────► │  (execution hors ligne)
-                                                                 │
-        simulateur de rejeu ──► data/landing/<jour>.csv          │
-                                      │ declenche               │
- ┌──────────────────────────── Prefect 3 ──────────────────────▼──────────────────────────┐
- │ daily_batch    : validation (GX) ─✗─► alerte + ARRET du lot                            │
- │                  └─✓─► quarantaine ─► scoring ─► feedbacks automatiques                │
- │ train_pipeline : ingestion ► validation ► labels/features                              │
- │                  ► [ baseline  ∥  HistGradientBoosting ] ► evaluation ► publication    │
- │ ingest_quarter : telechargement cache ► couche bronze DuckDB (2 passes)                │
- └──────────────┬──────────────────────────────────────────────────────┬──────────────────┘
-                ▼                                                      ▼
-   MLflow (runs, artefacts, registre, alias champion)        alertes webhook (Teams/Slack)
-                │  charge une fois par worker
-                ▼
-   API FastAPI :8001  ──►  PostgreSQL (schema tracing)  ──►  Grafana (3 vues)
-                ▲
-             Locust
-```
-
 ### Structure du dépôt
 
 ```
 .
-├── config/                 base.yaml (reference) + demo.yaml (overlay reduit)
+├── config/                 base.yaml (référence) + demo.yaml (overlay réduit)
 ├── src/hdd_rul/
 │   ├── common/             configuration Pydantic, logs, hachage, alertes, traces
-│   ├── ingestion/          telechargement cache, generateur synthetique, bronze DuckDB, landing
-│   ├── validation/         contrat Great Expectations + 3 expectations personnalisees
-│   ├── features/           labels RUL, features v1, pretraitement sklearn
-│   ├── training/           modeles, split, metriques, registre, regle de promotion
+│   ├── ingestion/          téléchargement en cache, générateur synthétique, bronze DuckDB, landing
+│   ├── validation/         contrat Great Expectations + 3 expectations personnalisées
+│   ├── features/           labels RUL, features v1, prétraitement sklearn
+│   ├── training/           modèles, split, métriques, registre, règle de promotion
 │   ├── serving/            chargement du champion, scoring, feedbacks
 │   ├── orchestration/      flows et deployments Prefect
-│   └── cli.py              point d'entree unique en ligne de commande
-├── api/                    FastAPI (schemas Pydantic + application)
-├── sql/init-db.sql         schema `tracing` et vues de supervision
-├── grafana/                provisioning + dashboard (genere par script)
-├── loadtest/               scenarios Locust, protocole, resultats
-├── scripts/                rejeu, injection d'incidents, demonstrations
+│   └── cli.py              point d'entrée unique en ligne de commande
+├── api/                    FastAPI (schémas Pydantic + application)
+├── sql/init-db.sql         schéma `tracing` et vues de supervision
+├── grafana/                provisioning + dashboard (généré par script)
+├── loadtest/               scénarios Locust, protocole, résultats
+├── scripts/                rejeu, injection d'incidents, démonstrations
 ├── tests/                  114 tests (unitaires, contrat, API, flows, bout en bout)
 ├── compose.yml, Dockerfile, mise.toml, pyproject.toml, uv.lock
 └── README.md, DATA.md, TRACABILITE.md, SYNTHESE_OPS.md
@@ -98,7 +73,7 @@ Vue simplifiée :
 
 ## 3. Installation
 
-Pre-requis : **Docker Compose** (le projet s'exécute sur la pile Compose),
+Prérequis : **Docker Compose** (le projet s'exécute sur la pile Compose),
 **Python 3.12** et [uv](https://docs.astral.sh/uv/) pour les commandes et les
 tests. [mise](https://mise.jdx.dev/) est pratique mais optionnel : chaque tâche
 a son équivalent `uv run`.
@@ -134,7 +109,7 @@ mise run download    # ou : uv run python -m hdd_rul.cli download
 mise run ingest      # ou : uv run python -m hdd_rul.cli ingest
 ```
 
-Les archives (~2 Go par trimestre) sont mises en cache et vérifiées par `sha256`.
+Les archives (1 à 2 Go par trimestre) sont mises en cache et vérifiées par `sha256`.
 `data/`, `*.zip` et `mlruns/` sont exclus du dépôt : **aucune donnée Backblaze
 n'est redistribuée**.
 
@@ -277,7 +252,7 @@ parce qu'elles encodent une connaissance du jeu que la bibliothèque standard n'
 pas : plausibilité d'un numéro de série constructeur, non-résurrection d'un
 disque en panne, anomalie de volume sur le taux de pannes.
 
-Chaque rapport est archive dans `artifacts/validation/` et joint au run MLflow.
+Chaque rapport est archivé dans `artifacts/validation/` et joint au run MLflow.
 
 ---
 
@@ -295,7 +270,7 @@ Chaque rapport est archive dans `artifacts/validation/` et joint au run MLflow.
   dépendent de MLflow ou de PostgreSQL.
 - **Hooks `on_failure`** : toute exécution échouée envoie une alerte et écrit son
   statut dans `tracing.pipeline_runs`.
-- **Cache** : le téléchargement est cache sur ses entrées et sur le code de la
+- **Cache** : le téléchargement est mis en cache sur ses entrées et sur le code de la
   tâche (`INPUTS + TASK_SOURCE`) ; une archive déjà présente et conforme n'est
   jamais retéléchargée.
 - **Pas de sous-flow** : un lot repris doit apparaître dans **un seul** flow run,

@@ -32,5 +32,5 @@ Le service `prefect` de `compose.yml` installe
 correctif reste visible et commenté à côté du service, plutôt que caché dans une
 image dérivée. Avec lui, la scrutation de `data/landing/` toutes les 30 s et
 l'entraînement nocturne (`17 2 * * *`) produisent bien leurs runs : voir
-`06_rejeu.txt`, ou chaque journée est traitée par un run créé par le
+`06_rejeu.txt`, où chaque journée est traitée par un run créé par le
 planificateur.

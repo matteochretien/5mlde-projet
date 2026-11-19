@@ -30,11 +30,10 @@ Convention de nommage : `NN_sujet.<ext>`, dans l'ordre de la démonstration.
 | `14_grafana_croise.png` | Vue croisée validation / production (v1 : 29,0 j contre 53,3 j) | idem |
 | `15_loadtest.md` | Campagne Locust, coût de calcul, dimensionnement | `mise run loadtest:campaign` (cf. `loadtest/PROTOCOLE.md`) |
 
-Anomalies rencontrées et contournées (à signaler à l'enseignant) :
+Anomalies rencontrées et contournées :
 
 - `00_anomalies_donnees_reelles.md` — les douze problèmes du premier passage sur
   données réelles (18 novembre) : symptôme, cause, correctif et commit.
-
 - `00_anomalie_fastapi_prefect.md` — FastAPI 0.155 supprime `min_items`, encore
   utilisé par le serveur Prefect 3.8 : plus aucun serveur Prefect ne démarre.
   Contournement : `fastapi < 0.155` dans `pyproject.toml`.

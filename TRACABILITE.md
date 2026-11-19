@@ -37,20 +37,20 @@ retrouver une exécution. Tout le reste va dans les paramètres ou les métrique
 | `eval.mae`, `eval.mae_lt30` | `6.6483` | Duplique les métriques clés en tags, uniquement pour pouvoir les lire dans la liste des runs sans ouvrir chaque run. |
 | `split.cutoff_date`, `split.rows_*` | `2026-03-02` | Forme du split, utile pour comprendre une MAE surprenante. |
 
-### Pourquoi des runs frères plutôt que des runs imbriques
+### Pourquoi des runs frères plutôt que des runs imbriqués
 
 La baseline et le candidat sont deux runs **de premier niveau**, reliés par
-`training.group_id`, et non un run parent avec deux runs imbriques.
+`training.group_id`, et non un run parent avec deux runs imbriqués.
 
 Raison : les deux entraînements tournent **en parallèle** dans des tâches
 Prefect concurrentes, et l'état « run actif » de MLflow est global au processus.
-Des runs imbriques lancés depuis plusieurs threads se mélangeraient — un
+Des runs imbriqués lancés depuis plusieurs threads se mélangeraient — un
 artefact finirait dans le mauvais run. Le tag de groupe donne le même
 regroupement, sans ce risque.
 
 La comparaison à la baseline est tout de même journalisée **sur le run du
 candidat** (`baseline_mae`, `baseline_mae_lt30`, `gain_mae_vs_baseline`) : c'est
-la que la question « ce modèle apporte-t-il quelque chose ? » se pose.
+là que la question « ce modèle apporte-t-il quelque chose ? » se pose.
 
 ## 3. Tags de version de modèle
 
@@ -60,20 +60,20 @@ la que la question « ce modèle apporte-t-il quelque chose ? » se pose.
 | `promotion.decision` | `promoted`, `rejected`, `rolled_back` | Ce qui a été décidé pour cette version. |
 | `promotion.reason` | `no_champion_yet`, `ameliore_zone_critique`, `mae_lt30_gain_insuffisant:0.0149<0.05`, `mae_globale_degradee:…`, `validation_failed`, `metrics_missing:…` | **Pourquoi**. La raison est enregistrée avec les valeurs : on n'a pas à relire les logs pour comprendre un rejet. |
 | `eval.mae`, `eval.mae_lt30` | `6.6483` | Permet de comparer les versions dans la liste du registre. |
-| `data.window_end` | `2026-05-31` | Jusqu'ou vont les données qu'à vues cette version. |
+| `data.window_end` | `2026-05-31` | Jusqu'où vont les données qu'a vues cette version. |
 | `trigger` | `schedule`, `replay`, … | Ce qui a déclenché l'entraînement de cette version. |
 
 ## 4. Alias et cycle de vie
 
 ```
-            entrainement
+            entraînement
                  |
                  v
           nouvelle version  ──────────────► alias `challenger`  (toujours)
                  |
-        regle de mise en service
+        règle de mise en service
            /            \
-      promu            rejete
+      promu            rejeté
         |                 \
         v                  `-- reste `challenger`, avec la raison en tag
   ancien champion ──► `previous`
@@ -124,7 +124,7 @@ aucune modification de code. La décision elle-même est une **fonction pure**
 
 ```bash
 uv run python -m hdd_rul.cli rollback      # champion <-> previous
-curl -X POST localhost:8001/admin/reload   # l'API recharge sans redemarrer
+curl -X POST localhost:8001/admin/reload   # l'API recharge sans redémarrer
 curl -s localhost:8001/model               # la nouvelle version servie est visible
 ```
 
@@ -154,7 +154,7 @@ vaut **en production** :
 - `tracing.feedbacks` — la RUL réellement constatée ;
 - `tracing.pipeline_runs` — statut de chaque exécution de flow.
 
-La vue `tracing.v_production_error` croisé les deux : elle donne la MAE réelle
+La vue `tracing.v_production_error` croise les deux : elle donne la MAE réelle
 par version de modèle. Le panneau Grafana « MAE de validation vs MAE de
 production » est ce qui permet de voir une dérive — un modèle dont la MAE
 annoncée est bonne mais dont la MAE réelle se dégrade — et donc de déclencher un

@@ -20,13 +20,9 @@ Une fois décompressée, chaque archive contient un CSV par journée, nommé
 
 ### Conditions d'utilisation
 
-> **À vérifier et recopier mot pour mot depuis la page Backblaze avant le
-> rendu.** De mémoire, les conditions imposent de citer Backblaze comme source,
-> d'assumer seul l'usage fait des données, et de ne pas les revendre en l'état.
-
 Ce que le projet respecte :
 
-- la source est citee ici, dans le README et dans la soutenance ;
+- la source est citée ici, dans le README et dans la soutenance ;
 - **aucune donnée n'est redistribuée** : `data/` et `*.zip` sont exclus du dépôt
   par `.gitignore`, et le code télécharge les archives depuis leur URL d'origine ;
 - l'usage est strictement pédagogique, sans revente ni rediffusion.
@@ -35,16 +31,12 @@ Ce que le projet respecte :
 
 | Trimestre | Rôle dans le projet |
 |---|---|
-| Q4 2025 | Historique seul : fournit les 90 jours qui précédent les pannes du début de Q1 2026. |
+| Q4 2025 | Historique seul : fournit les 90 jours qui précèdent les pannes du début de Q1 2026. |
 | Q1 2026 | Entraînement initial. |
 | Q2 2026 | **Rejoué jour par jour** pour simuler l'arrivée de nouvelles données. |
 
 Le périmètre se déclare dans `config/base.yaml` (`data.quarters`) : changer de
 trimestres ne demande aucune modification de code.
-
-> **À vérifier :** l'existence effective de `data_Q4_2025.zip`, `data_Q1_2026.zip`
-> et `data_Q2_2026.zip` sur le serveur de Backblaze au moment du rendu, et
-> relever leur `sha256` (cf. ci-dessous).
 
 ## Reproductibilité : cache et empreintes
 
@@ -55,36 +47,36 @@ vérifie leur `sha256` et écrit `data/raw/_manifest.json` :
 {
   "Q1_2026": {
     "url": "https://f001.backblazeb2.com/file/Backblaze-Hard-Drive-Data/data_Q1_2026.zip",
-    "sha256": "<releve au premier telechargement>",
-    "bytes": 2100000000,
-    "downloaded_at": "2026-11-05T10:12:00+00:00"
+    "sha256": "cad66574292b89bae8ec8370dbb5e90d2e0b45d61341502708df328fdb15ed5c",
+    "bytes": 1312921361,
+    "downloaded_at": "2026-11-16T20:00:29+00:00"
   }
 }
 ```
 
-Une fois les empreintes relevées, elles se figent dans `config/base.yaml` sous
-`data.checksums`. À partir de là, tout téléchargement dont l'empreinte diffère
-est **rejeté** (`ChecksumMismatchError`) : une archive corrompue ou republiee par
+Les empreintes relevées au premier téléchargement sont figées dans
+`config/base.yaml` sous `data.checksums`. Dès lors, tout téléchargement dont l'empreinte diffère
+est **rejeté** (`ChecksumMismatchError`) : une archive corrompue ou republiée par
 Backblaze ne peut plus entrer silencieusement dans le pipeline.
 
 ```yaml
 data:
   checksums:
-    Q1_2026: "..."   # a completer apres le premier telechargement
-    Q2_2026: "..."
-    Q4_2025: "..."
+    Q1_2026: "cad66574292b89bae8ec8370dbb5e90d2e0b45d61341502708df328fdb15ed5c"
+    Q2_2026: "b30be47290580c1aee9a5155afadc97c26e36220722bc5ee689108e949c74acc"
+    Q4_2025: "57d0667cc03f23f16ded693e1e83e1ed28b7ea42d54b88d221734f5926030cb5"
 ```
 
 La couche bronze porte sa propre empreinte (`source_fingerprint` dans
 `data/bronze/bronze_manifest.json`), calculée sur les noms et tailles des
 fichiers sources. Elle est reprise en tag MLflow `data.sha256`, ce qui permet de
-retrouver, pour un modèle donne, le périmètre exact de données utilisé.
+retrouver, pour un modèle donné, le périmètre exact de données utilisé.
 
 ## Volume
 
 | Étape | Ordre de grandeur |
 |---|---|
-| Archives zip | ~2 Go par trimestre |
+| Archives zip | 1,2 à 2,1 Go par trimestre |
 | CSV décompressés | ~10 à 12 Go par trimestre |
 | Couche bronze (Parquet, après filtrage) | quelques centaines de Mo |
 
@@ -106,9 +98,9 @@ par Backblaze : 11 colonnes d'identification plus environ 180 colonnes SMART
 | `serial_number` | Identifiant du disque ; clé de groupe anti-fuite. |
 | `model` | Feature catégorielle (top-K + modalité « autre ») et source du constructeur. |
 | `capacity_bytes` | Feature `capacity_tb`. Valeur `<= 0` traitée comme inconnue. |
-| `failure` | `1` = le disque est tombe en panne **ce jour-là** (sa dernière ligne). |
-| `smart_5_raw` | Secteurs réallouées. |
-| `smart_9_raw` | Heures de fonctionnement (age du disque). |
+| `failure` | `1` = le disque est tombé en panne **ce jour-là** (sa dernière ligne). |
+| `smart_5_raw` | Secteurs réalloués. |
+| `smart_9_raw` | Heures de fonctionnement (âge du disque). |
 | `smart_12_raw` | Cycles d'alimentation. |
 | `smart_187_raw` | Erreurs non corrigées signalées. |
 | `smart_188_raw` | Commandes expirées. |
