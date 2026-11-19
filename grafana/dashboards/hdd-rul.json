@@ -1,0 +1,670 @@
+{
+  "uid": "hdd-rul-main",
+  "title": "HDD RUL — technique, métier, croisé",
+  "description": "Supervision de la chaîne de prédiction de la RUL des disques durs. Source : schéma `tracing` de PostgreSQL.",
+  "tags": [
+    "hdd-rul",
+    "mlops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "editable": true,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Vue technique — service et traitements",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Trafic API (requêtes/min) par endpoint",
+      "description": "Charge réellement servie, par endpoint.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(requested_at, '1m'), endpoint, count(*) AS requêtes\nFROM tracing.api_requests\nWHERE $__timeFilter(requested_at)\nGROUP BY 1, 2\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latence p95 (ms) par endpoint",
+      "description": "Objectif de dimensionnement : p95 < 200 ms (cf. loadtest/PROTOCOLE.md).",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(requested_at, '1m'), endpoint,\n       percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms\nFROM tracing.api_requests\nWHERE $__timeFilter(requested_at)\nGROUP BY 1, 2\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Erreurs par code HTTP",
+      "description": "422 = entrée refusée par la validation, 503 = dépendance indisponible.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(requested_at, '1m'), status_code::text AS code, count(*) AS erreurs\nFROM tracing.api_requests\nWHERE $__timeFilter(requested_at) AND status_code >= 400\nGROUP BY 1, 2\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Exécutions de flows (statut)",
+      "description": "Suivi des flows Prefect : ingestion, lot journalier, entraînement.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT recorded_at AS \"time\", flow_name, status, trigger, batch_name,\n       details->>'rows' AS lignes\nFROM tracing.pipeline_runs\nWHERE $__timeFilter(recorded_at)\nORDER BY recorded_at DESC\nLIMIT 100",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Version de modèle servie",
+      "description": "Permet de voir le basculement de version après une promotion.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT model_version AS \"Version\", count(*) AS \"Prédictions\"\nFROM tracing.predictions\nWHERE $__timeFilter(predicted_at)\nGROUP BY 1\nORDER BY 2 DESC",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    },
+    {
+      "type": "timeseries",
+      "title": "Lignes en quarantaine",
+      "description": "Règles non bloquantes du contrat de données (ex. capacity_bytes <= 0).",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(recorded_at, '1h'), sum(rows) AS lignes_quarantaine\nFROM tracing.quarantine\nWHERE $__timeFilter(recorded_at)\nGROUP BY 1\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Vue métier — parc de disques",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "barchart",
+      "title": "Disques à risque (RUL prédite < 30 j) par jour et par modèle",
+      "description": "Ce que l'exploitant doit traiter : les disques à remplacer en priorité. Axe : jour rejoué (indépendant de la plage de temps). Les 8 modèles les plus alertés, le reste dans « autres ».",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH top AS (\n  SELECT model FROM tracing.predictions\n  WHERE source = 'batch' AND alert\n  GROUP BY model ORDER BY count(*) DESC LIMIT 8\n)\nSELECT observation_date::text AS \"Jour\",\n       CASE WHEN model IN (SELECT model FROM top) THEN model ELSE 'autres' END AS modele,\n       count(*) FILTER (WHERE alert) AS a_risque\nFROM tracing.predictions\nWHERE source = 'batch'\nGROUP BY 1, 2\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "rowField": "Jour",
+            "columnField": "modele",
+            "valueField": "a_risque",
+            "emptyValue": "zero"
+          }
+        }
+      ],
+      "options": {
+        "stacking": "normal",
+        "showValue": "never",
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 100,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Distribution des RUL prédites",
+      "description": "Tranches de 5 j, étiquetées par leur borne haute. Un pic à 90 j est normal : c'est la valeur « pas de panne en vue » (RUL plafonnée à l'horizon).",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT (LEAST(width_bucket(predicted_rul, 0, 90, 18), 18) * 5)::text AS \"RUL prédite (jours)\",\n       count(*) AS \"Disques\"\nFROM tracing.predictions\nWHERE $__timeFilter(predicted_at)\nGROUP BY LEAST(width_bucket(predicted_rul, 0, 90, 18), 18)\nORDER BY LEAST(width_bucket(predicted_rul, 0, 90, 18), 18)",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    },
+    {
+      "type": "barchart",
+      "title": "Pannes constatées par jour",
+      "description": "Disques tombés en panne, par jour rejoué (feedbacks automatiques du rejeu). Indépendant de la plage de temps.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT failure_date::text AS \"Jour\", count(DISTINCT serial_number) AS \"Pannes\"\nFROM tracing.feedbacks\nWHERE failure_date IS NOT NULL\nGROUP BY 1\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {
+        "showValue": "auto",
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Disques scorés et alertes (cumul)",
+      "description": "Volume servi sur la période sélectionnée.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Disques scorés\",\n       count(*) FILTER (WHERE alert) AS \"Alertes < 30 j\",\n       count(DISTINCT serial_number) AS \"Disques distincts\"\nFROM tracing.predictions\nWHERE $__timeFilter(predicted_at)",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    },
+    {
+      "type": "row",
+      "title": "Vue croisée — qualité du modèle en production",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "barchart",
+      "title": "MAE réelle en production, par version de modèle",
+      "description": "À comparer à la MAE de validation annoncée : dérive ou non ? Axe : jour rejoué (indépendant de la plage de temps).",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT p.observation_date::text AS \"Jour\", 'v' || p.model_version AS version,\n       avg(abs(p.predicted_rul - f.actual_rul)) AS mae\nFROM tracing.predictions p\nJOIN tracing.feedbacks f\n  ON f.serial_number = p.serial_number AND f.observation_date = p.observation_date\nWHERE p.source = 'batch'\nGROUP BY 1, 2\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: j",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "rowField": "Jour",
+            "columnField": "version",
+            "valueField": "mae",
+            "emptyValue": "zero"
+          }
+        }
+      ],
+      "options": {
+        "stacking": "none",
+        "showValue": "never",
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 100,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "MAE réelle sur la zone critique (RUL < 30 j)",
+      "description": "C'est la métrique sur laquelle repose la règle de mise en service.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT p.observation_date::text AS \"Jour\", 'v' || p.model_version AS version,\n       avg(abs(p.predicted_rul - f.actual_rul)) AS mae_lt30\nFROM tracing.predictions p\nJOIN tracing.feedbacks f\n  ON f.serial_number = p.serial_number AND f.observation_date = p.observation_date\nWHERE p.source = 'batch' AND f.actual_rul < 30\nGROUP BY 1, 2\nORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: j",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "rowField": "Jour",
+            "columnField": "version",
+            "valueField": "mae_lt30",
+            "emptyValue": "zero"
+          }
+        }
+      ],
+      "options": {
+        "stacking": "none",
+        "showValue": "never",
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 100,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "MAE de validation (MLflow) vs MAE de production, par version",
+      "description": "Le tableau qui justifie (ou non) une promotion ou un retour arrière.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT v.version AS \"Version\",\n       v.alias AS \"Alias\",\n       round((v.metrics->>'mae')::numeric, 3) AS \"MAE validation\",\n       round((v.metrics->>'mae_lt30')::numeric, 3) AS \"MAE validation < 30 j\",\n       round(avg(abs(p.predicted_rul - f.actual_rul))::numeric, 3) AS \"MAE production\",\n       count(f.id) AS \"Feedbacks\"\nFROM tracing.model_versions v\nLEFT JOIN tracing.predictions p ON p.model_version = v.version\nLEFT JOIN tracing.feedbacks f\n       ON f.serial_number = p.serial_number AND f.observation_date = p.observation_date\nGROUP BY 1, 2, 3, 4\nORDER BY 1 DESC",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Erreur par modèle de disque (version servie)",
+      "description": "Les attributs SMART n'ont pas la même sémantique selon le constructeur.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "hdd-rul-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT p.model AS \"Modèle de disque\",\n       count(*) AS \"Feedbacks\",\n       round(avg(abs(p.predicted_rul - f.actual_rul))::numeric, 3) AS \"MAE\"\nFROM tracing.predictions p\nJOIN tracing.feedbacks f\n  ON f.serial_number = p.serial_number AND f.observation_date = p.observation_date\nWHERE $__timeFilter(p.predicted_at)\nGROUP BY 1\nORDER BY 3 DESC",
+          "datasource": {
+            "type": "postgres",
+            "uid": "hdd-rul-postgres"
+          },
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "transformations": [],
+      "options": {}
+    }
+  ]
+}

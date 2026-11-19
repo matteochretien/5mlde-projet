@@ -1,0 +1,112 @@
+# Preuve 03 — entraînement initial, publication du champion
+# Exécution : 2026-11-18 09:40 CET | commit : 65914ee | config : config/base.yaml | pile Compose (MLflow 3.18 + PostgreSQL)
+# Simulation : on se place au 1er avril 2026, début du trimestre rejoué (Q2) ; seules
+# les lignes dont le label était connu à cette date entrent dans l'entraînement.
+
+$ uv run python -m hdd_rul.cli train --as-of 2026-04-01
+[...]
+Created version '1' of model 'hdd-rul-hgb'.
+2026-11-18T09:40:28 | INFO    | hdd_rul.training.registry    | version 1 promue champion (no_champion_yet)
+2026-11-18T09:40:28 | INFO    | hdd_rul.training.train       | entrainement 08ee5bbf termine: version 1 promoted (no_champion_yet)
+{
+  "group_id": "08ee5bbf7a624715949735f1254d67bd",
+  "models": {
+    "baseline_median": {
+      "run_id": "f4776222ebaf4a9c884212d32251bac2",
+      "metrics": { "n_samples": 12973, "mae": 45.714, "rmse": 55.107, "mae_lt30": 76.241, "n_lt30": 5209,
+                   "alert_precision": 0.0, "alert_recall": 0.0, "mean_prediction": 90.0 }
+    },
+    "hist_gradient_boosting": {
+      "run_id": "6d80ffa063844d03866e190d17724166",
+      "metrics": { "n_samples": 12973, "mae": 28.973, "rmse": 38.354, "mae_lt30": 47.997, "n_lt30": 5209,
+                   "alert_precision": 0.649, "alert_recall": 0.060, "mean_prediction": 69.091 }
+    }
+  },
+  "decision": "promoted",
+  "reason": "no_champion_yet",
+  "registered_version": "1",
+  "aliases": { "challenger": "1", "champion": "1" },
+  "data_window": { "window_start": "2025-10-01", "window_end": "2026-04-01", "as_of": "2026-04-01" }
+}
+
+$ curl -s -X POST localhost:8001/admin/reload    # l'API charge le champion sans redemarrer
+{ "available": true, "model_name": "hdd-rul-hgb", "model_version": "1", "model_alias": "champion",
+  "run_id": "6d80ffa063844d03866e190d17724166", "loaded_at": "2026-11-18T08:40:34+00:00", ... }
+$ curl -s -o /dev/null -w '%{http_code}' localhost:8001/health
+200
+
+# ---------------------------------------------------------------------------
+# Ce que le registre MLflow a conservé de ce run (relu le 2026-11-18 à 11:30)
+# ---------------------------------------------------------------------------
+run 6d80ffa063844d03866e190d17724166 (hist_gradient_boosting-08ee5bbf) : 2026-11-18 09:40:19 -> 2026-11-18 09:40:27, FINISHED
+
+Tags du run (strategie : TRACABILITE.md)
+  config.source = config/base.yaml
+  data.as_of = 2026-04-01
+  data.horizon_days = 90
+  data.sha256 = 853c14a2474edf737d22f0e25a35fb9c60606a1f3d47ca21c6241eaa42c67ecf
+  data.source_files = 273
+  data.window_end = 2026-04-01
+  data.window_start = 2025-10-01
+  eval.mae = 28.9730
+  eval.mae_lt30 = 47.9969
+  git.commit = 65914ee
+  prefect.flow_run_id = 
+  split.cutoff_date = 2025-12-29
+  split.rows_train = 192674
+  split.rows_valid = 12973
+  training.group_id = 08ee5bbf7a624715949735f1254d67bd
+  training.role = candidate
+  trigger = manual
+  validation.status = passed
+
+Parametres
+  alert_threshold_days = 30
+  healthy_rate_pct = 4
+  healthy_stride_days = 7
+  horizon_days = 90
+  model.early_stopping = True
+  model.l2_regularization = 0.5
+  model.learning_rate = 0.08
+  model.max_depth = 8
+  model.max_iter = 300
+  model.min_samples_leaf = 40
+  model.random_state = 20261105
+  model.validation_fraction = 0.1
+  rows_train = 192674
+  rows_valid = 12973
+  smart_raw = 5,9,12,187,188,193,194,197,198,199
+  split_cutoff_date = 2025-12-29
+  split_valid_fraction = 0.2
+  top_k_models = 20
+
+Metriques
+  alert_f1 = 0.1106
+  alert_precision = 0.6495
+  alert_recall = 0.0605
+  baseline_mae = 45.7144
+  baseline_mae_lt30 = 76.2409
+  gain_mae_vs_baseline = 16.7414
+  mae = 28.973
+  mae_lt30 = 47.9969
+  mean_prediction = 69.0911
+  mean_target = 44.2856
+  n_lt30 = 5209.0
+  n_samples = 12973.0
+  rmse = 38.3539
+
+Artefacts du run
+  rapports/data_manifest.json  (1112 o)
+  rapports/features.json  (561 o)
+  rapports/residus_rul.png  (212222 o)
+  modele (pipeline sklearn : pretraitement + HGB) : models:/m-5033e61a8f2d478ab0cc9753a831bfe7
+
+Version 1 du modele 'hdd-rul-hgb'
+  data.window_end = 2026-04-01
+  eval.mae = 28.9730
+  eval.mae_lt30 = 47.9969
+  promotion.decision = promoted
+  promotion.reason = no_champion_yet
+  trigger = manual
+  validation.status = passed
+  alias champion -> 1

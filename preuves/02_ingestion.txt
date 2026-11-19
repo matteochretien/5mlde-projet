@@ -1,0 +1,54 @@
+# Preuve 02 — téléchargement en cache (sha256) et couche bronze DuckDB en 2 passes
+# Date : 2026-11-18 11:26 CET | commit : af6874c | config : config/base.yaml
+# Les archives sont déjà en cache : aucun octet n'est retéléchargé, l'empreinte est revérifiée.
+
+$ ls -l data/cache
+1312921361 data_Q1_2026.zip
+2092757685 data_Q2_2026.zip
+1157851346 data_Q4_2025.zip
+
+$ uv run python -m hdd_rul.cli download
+2026-11-18T11:26:46 | INFO    | hdd_rul.ingestion.download   | cache: data_Q4_2025.zip deja present (sha256=57d0667cc03f)
+2026-11-18T11:26:46 | INFO    | hdd_rul.ingestion.download   | data_Q4_2025.zip: 0 fichiers journaliers ecrits dans data/raw
+2026-11-18T11:26:46 | INFO    | hdd_rul.ingestion.download   | cache: data_Q1_2026.zip deja present (sha256=cad66574292b)
+2026-11-18T11:26:46 | INFO    | hdd_rul.ingestion.download   | data_Q1_2026.zip: 0 fichiers journaliers ecrits dans data/raw
+2026-11-18T11:26:47 | INFO    | hdd_rul.ingestion.download   | cache: data_Q2_2026.zip deja present (sha256=b30be4729058)
+2026-11-18T11:26:47 | INFO    | hdd_rul.ingestion.download   | data_Q2_2026.zip: 0 fichiers journaliers ecrits dans data/raw
+{
+  "Q4_2025": {
+    "archive": "data/cache/data_Q4_2025.zip",
+    "extracted_files": 0
+  },
+  "Q1_2026": {
+    "archive": "data/cache/data_Q1_2026.zip",
+    "extracted_files": 0
+  },
+  "Q2_2026": {
+    "archive": "data/cache/data_Q2_2026.zip",
+    "extracted_files": 0
+  }
+}
+
+$ ls data/raw/*.csv | wc -l
+273
+
+$ uv run python -m hdd_rul.cli ingest
+2026-11-18T11:26:47 | INFO    | hdd_rul.ingestion.bronze     | passe 1/2 — agregation de l'historique des disques (273 fichiers)
+2026-11-18T11:27:55 | INFO    | hdd_rul.ingestion.bronze     | passe 1/2 — 364674 disques, 3497 en panne, 13975 sains echantillonnes
+2026-11-18T11:27:55 | INFO    | hdd_rul.ingestion.bronze     | passe 2/2 — extraction des lignes utiles
+2026-11-18T11:29:01 | INFO    | hdd_rul.ingestion.bronze     | bronze construit: 580279 lignes (233260 pannes / 347019 sains) sur 2025-10-01 00:00:00 -> 2026-06-30 00:00:00
+{
+  "built_at": "2026-11-18T10:29:01+00:00",
+  "date_max": "2026-06-30 00:00:00",
+  "date_min": "2025-10-01 00:00:00",
+  "drives_failed": 3497,
+  "drives_healthy_sampled": 13975,
+  "drives_total": 364674,
+  "horizon_days": 90,
+  "rows_failed": 233260,
+  "rows_healthy": 347019,
+  "rows_total": 580279,
+  "source_files": 273,
+  "source_fingerprint": "853c14a2474edf737d22f0e25a35fb9c60606a1f3d47ca21c6241eaa42c67ecf",
+  "source_glob": "data/raw/*.csv"
+}

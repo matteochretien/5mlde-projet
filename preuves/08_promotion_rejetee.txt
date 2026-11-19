@@ -1,0 +1,101 @@
+# Preuve 08 — réentraînement sur une fenêtre plus récente, challenger rejeté avec sa raison chiffrée
+# Date : 2026-11-18 11:32 CET | commit : af6874c | champion en place : v1 (as_of 2026-04-01)
+# Simulation : on se place au 15 mai 2026. Plus de labels sont résolus, la fenêtre d'entraînement avance.
+# Règle (config/base.yaml, promotion.*) : MAE(RUL<30j) améliorée d'au moins 5 %, MAE globale dégradée de 2 % au plus,
+# le champion étant réévalué sur la MEME validation que le challenger.
+
+$ uv run python -m hdd_rul.cli train --trigger replay --as-of 2026-05-15
+2026-11-18T11:33:00 | INFO    | hdd_rul.features.labels      | labels: 580279/580279 lignes etiquetees (233260 pannes, 347019 sains), 0 censurees, 0 invalides
+2026-11-18T11:33:00 | INFO    | hdd_rul.features.labels      | fenetre d'entrainement resolue: 2025-10-01 -> 2026-05-15 (452306 lignes, as_of=2026-05-15)
+2026-11-18T11:33:00 | INFO    | hdd_rul.training.split       | split: coupure 2026-02-05 | train=288883 lignes / 12921 disques | valid=18413 lignes / 3081 disques | 145010 lignes ecartees pour eviter les fuites
+2026-11-18T11:33:00 | INFO    | hdd_rul.training.train       | entrainement de baseline_median sur 288883 lignes
+2026/11/18 11:33:01 INFO mlflow.utils.uv_utils: Detected uv project: found uv.lock and pyproject.toml in /Users/matteo/Projects/Cours/M2/5MLDE/Projet
+2026/11/18 11:33:02 WARNING mlflow.sklearn: Saving scikit-learn models in the pickle or cloudpickle format requires exercising caution because these formats rely on Python's object serialization mechanism, which can execute arbitrary code during deserialization. The recommended safe alternative is the 'skops' format. For more information, see: https://scikit-learn.org/stable/model_persistence.html
+2026/11/18 11:33:02 INFO mlflow.utils.uv_utils: Detected uv project: found uv.lock and pyproject.toml in /Users/matteo/Projects/Cours/M2/5MLDE/Projet
+2026/11/18 11:33:02 INFO mlflow.utils.environment: Detected uv project at /Users/matteo/Projects/Cours/M2/5MLDE/Projet. Attempting to export requirements via 'uv export'.
+2026/11/18 11:33:02 INFO mlflow.utils.uv_utils: Exported 171 dependencies via uv
+2026/11/18 11:33:02 INFO mlflow.utils.environment: Successfully exported 171 requirements from uv project. Skipping package capture based inference.
+2026/11/18 11:33:02 WARNING mlflow.utils.environment: Failed to resolve installed pip version. ``pip`` will be added to conda.yaml environment spec without a version specifier.
+2026-11-18T11:33:02 | INFO    | hdd_rul.training.train       | baseline_median: MAE=47.005 | MAE(<30j)=76.132 | rappel alerte=0.000
+2026-11-18T11:33:02 | INFO    | hdd_rul.training.train       | entrainement de hist_gradient_boosting sur 288883 lignes
+2026/11/18 11:33:05 INFO mlflow.utils.uv_utils: Detected uv project: found uv.lock and pyproject.toml in /Users/matteo/Projects/Cours/M2/5MLDE/Projet
+2026/11/18 11:33:06 WARNING mlflow.sklearn: Saving scikit-learn models in the pickle or cloudpickle format requires exercising caution because these formats rely on Python's object serialization mechanism, which can execute arbitrary code during deserialization. The recommended safe alternative is the 'skops' format. For more information, see: https://scikit-learn.org/stable/model_persistence.html
+2026/11/18 11:33:06 INFO mlflow.utils.uv_utils: Detected uv project: found uv.lock and pyproject.toml in /Users/matteo/Projects/Cours/M2/5MLDE/Projet
+2026/11/18 11:33:06 INFO mlflow.utils.environment: Detected uv project at /Users/matteo/Projects/Cours/M2/5MLDE/Projet. Attempting to export requirements via 'uv export'.
+2026/11/18 11:33:06 INFO mlflow.utils.uv_utils: Exported 171 dependencies via uv
+2026/11/18 11:33:06 INFO mlflow.utils.environment: Successfully exported 171 requirements from uv project. Skipping package capture based inference.
+2026/11/18 11:33:06 WARNING mlflow.utils.environment: Failed to resolve installed pip version. ``pip`` will be added to conda.yaml environment spec without a version specifier.
+2026-11-18T11:33:06 | INFO    | hdd_rul.training.train       | hist_gradient_boosting: MAE=28.776 | MAE(<30j)=46.294 | rappel alerte=0.052
+2026-11-18T11:33:07 | INFO    | hdd_rul.training.train       | champion v1 reevalue sur la validation du challenger: MAE=28.484 | MAE(<30j)=44.772
+Created version '4' of model 'hdd-rul-hgb'.
+2026-11-18T11:33:08 | WARNING | hdd_rul.training.registry    | version 4 non promue (mae_lt30_gain_insuffisant:-0.0340<0.05)
+2026-11-18T11:33:08 | INFO    | hdd_rul.training.train       | entrainement f1fa12fe termine: version 4 rejected (mae_lt30_gain_insuffisant:-0.0340<0.05)
+{
+  "group_id": "f1fa12fee1644f48be951eb6c659abb8",
+  "models": {
+    "baseline_median": {
+      "name": "baseline_median",
+      "run_id": "394fc0e2b9e943ceb7cba31ea3c019d6",
+      "model_uri": "models:/m-b4ec1ec2a3a140d7bed1575377ba7f12",
+      "metrics": {
+        "n_samples": 18413,
+        "mae": 47.00521370770651,
+        "rmse": 55.4214049266418,
+        "mae_lt30": 76.13175355450237,
+        "n_lt30": 7385,
+        "alert_precision": 0.0,
+        "alert_recall": 0.0,
+        "alert_f1": 0.0,
+        "mean_prediction": 90.0,
+        "mean_target": 42.99478629229349
+      }
+    },
+    "hist_gradient_boosting": {
+      "name": "hist_gradient_boosting",
+      "run_id": "8ea3ca8f409d4b47ab87bb9fa5ba19fb",
+      "model_uri": "models:/m-518d71cacb804670bcca55b50386b487",
+      "metrics": {
+        "n_samples": 18413,
+        "mae": 28.77640296829749,
+        "rmse": 37.0807484990448,
+        "mae_lt30": 46.29441530780371,
+        "n_lt30": 7385,
+        "alert_precision": 0.7206703910614525,
+        "alert_recall": 0.052403520649966145,
+        "alert_f1": 0.09770260035344609,
+        "mean_prediction": 67.07127331736002,
+        "mean_target": 42.99478629229349
+      }
+    }
+  },
+  "decision": "rejected",
+  "reason": "mae_lt30_gain_insuffisant:-0.0340<0.05",
+  "registered_version": "4",
+  "aliases": {
+    "challenger": "4"
+  },
+  "data_window": {
+    "window_start": "2025-10-01",
+    "window_end": "2026-05-15",
+    "as_of": "2026-05-15"
+  }
+}
+resume: artifacts/training/derniere_execution.json
+
+# Tags posés sur la version candidate : on lit la décision et ses raisons sans relire les logs
+version 4 (alias challenger)
+  data.window_end = 2026-05-15
+  eval.mae = 28.7764
+  eval.mae_lt30 = 46.2944
+  promotion.champion_eval = same_validation
+  promotion.champion_mae = 28.4841
+  promotion.champion_mae_lt30 = 44.7719
+  promotion.champion_version = 1
+  promotion.decision = rejected
+  promotion.reason = mae_lt30_gain_insuffisant:-0.0340<0.05
+  trigger = replay
+  validation.status = passed
+alias champion -> 1
+
+$ curl -s localhost:8001/model   # l API sert toujours le champion
+{'model_name': 'hdd-rul-hgb', 'model_version': '1', 'model_alias': 'champion', 'run_id': '6d80ffa063844d03866e190d17724166'}

@@ -1,0 +1,99 @@
+# Outils et tâches du projet. `mise install` puis `mise run setup`.
+[tools]
+python = "3.12"
+uv = "latest"
+
+[env]
+_.file = ".env.example"          # valeurs par défaut ; .env (gitignore) les surcharge
+_.path = [".venv/bin"]
+PYTHONPATH = "{{config_root}}/src:{{config_root}}"
+
+[tasks.setup]
+description = "Crée l'environnement virtuel et installe les dépendances verrouillées"
+run = ["uv sync --all-extras", "uv run python -c 'import hdd_rul; print(hdd_rul.__version__)'"]
+
+[tasks.lint]
+description = "Lint + vérification du formatage"
+run = ["uv run ruff check .", "uv run ruff format --check ."]
+
+[tasks.format]
+description = "Formate le code"
+run = "uv run ruff format ."
+
+[tasks.test]
+description = "Tests unitaires et de contrat (hors intégration)"
+run = "uv run pytest -m 'not integration'"
+
+[tasks.test-all]
+description = "Tous les tests, intégration incluse (services Compose requis)"
+run = "uv run pytest"
+
+[tasks."data:synthetic"]
+description = "Génère un jeu Drive Stats synthétique (exécution hors ligne)"
+run = "uv run python -m hdd_rul.cli synthetic"
+
+[tasks.download]
+description = "Télécharge les trimestres Backblaze déclarés dans la config (cache + sha256)"
+run = "uv run python -m hdd_rul.cli download"
+
+[tasks.ingest]
+description = "Construit la couche bronze (DuckDB, 2 passes) depuis data/raw"
+run = "uv run python -m hdd_rul.cli ingest"
+
+[tasks.validate]
+description = "Applique le contrat de qualité Great Expectations sur un lot journalier"
+run = "uv run python -m hdd_rul.cli validate"
+
+[tasks.train]
+description = "Entraîne baseline + HGB, publie dans MLflow et applique la règle de promotion"
+run = "uv run python -m hdd_rul.cli train"
+
+[tasks.batch]
+description = "Exécute le flow daily_batch sur le plus ancien lot en attente"
+run = "uv run python -m hdd_rul.cli batch"
+
+[tasks."alert:test"]
+description = "Envoie une alerte de test au webhook (rendu de la carte Teams)"
+run = "uv run python -m hdd_rul.cli alert-test"
+
+[tasks.replay]
+description = "Dépose les journées suivantes du trimestre de simulation dans data/landing"
+# --deposit-only : c'est le runner Prefect (pile Compose) qui traite les lots.
+# Lancer aussi le flow ici ferait traiter deux fois chaque journée.
+run = "uv run python -m hdd_rul.cli replay --deposit-only"
+
+[tasks.rollback]
+description = "Retour arrière : champion <- previous"
+run = "uv run python -m hdd_rul.cli rollback"
+
+[tasks.loadtest]
+description = "Campagne Locust (headless) contre l'API"
+run = "uv run locust -f loadtest/locustfile.py --headless -u 50 -r 10 -t 2m --host http://localhost:8001 --html loadtest/results/report.html"
+
+[tasks.dashboard]
+description = "Régénère le tableau de bord Grafana (JSON) depuis sa description Python"
+run = "uv run python scripts/build_dashboard.py"
+
+[tasks."loadtest:campaign"]
+description = "Campagne de charge complète contre le champion (1/2/4/8 workers x tailles de lot)"
+run = "bash scripts/loadtest_campaign.sh config/base.yaml 30s"
+
+[tasks."loadtest:report"]
+description = "Agrège les CSV Locust en tableau Markdown"
+run = "uv run python scripts/collect_loadtest_results.py loadtest/results"
+
+[tasks."demo:nominal"]
+description = "Démonstration du cycle nominal de bout en bout"
+run = "bash scripts/demo_nominal.sh"
+
+[tasks."demo:incident"]
+description = "Démonstration de l'incident 'lot invalide bloqué par GX'"
+run = "bash scripts/demo_incident.sh"
+
+[tasks.up]
+description = "Démarre la pile Docker Compose"
+run = "docker compose up -d --build"
+
+[tasks.down]
+description = "Arrête la pile Docker Compose"
+run = "docker compose down -v"

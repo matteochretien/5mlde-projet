@@ -1,0 +1,19 @@
+{
+  "observation": {
+    "serial_number": "ZA12345678",
+    "model": "ST4000DM000",
+    "capacity_bytes": 4000787030016,
+    "date": "2026-05-20",
+    "smart_5_raw": 120,
+    "smart_9_raw": 41714,
+    "smart_12_raw": 48,
+    "smart_187_raw": 80,
+    "smart_188_raw": 5,
+    "smart_193_raw": 66742,
+    "smart_194_raw": 34,
+    "smart_197_raw": 40,
+    "smart_198_raw": 12,
+    "smart_199_raw": 2
+  },
+  "persist": false
+}

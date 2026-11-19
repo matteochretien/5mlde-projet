@@ -1,0 +1,52 @@
+# Preuve 11 — mise en service d'un challenger, puis retour arrière et rechargement de l'API
+# Date : 2026-11-18 11:34 CET | commit : af6874c (overlay et seuil négatif introduits par 9c569a1)
+# Pour avoir une version 'previous' à restaurer, on force une promotion avec l'overlay de
+# démonstration config/promotion_permissive.yaml : aucun changement de code, et la raison
+# tracée dit explicitement qu'une régression a été tolérée.
+
+# État initial
+alias du registre : {'champion': '1', 'challenger': '4', 'previous': None}
+$ curl -s localhost:8001/model  -> {'model_name': 'hdd-rul-hgb', 'model_version': '1', 'model_alias': 'champion', 'run_id': '6d80ffa063844d03866e190d17724166'}
+
+$ grep -v "^#" config/promotion_permissive.yaml
+promotion:
+  min_mae_lt30_improvement: -1.0
+  max_mae_global_degradation: 1.0
+
+$ uv run python -m hdd_rul.cli --config config/promotion_permissive.yaml train --trigger demo --as-of 2026-05-15
+2026-11-18T11:34:52 | INFO    | hdd_rul.training.train       | champion v1 reevalue sur la validation du challenger: MAE=28.484 | MAE(<30j)=44.772
+2026-11-18T11:34:54 | INFO    | hdd_rul.training.registry    | version 5 promue champion (regression_toleree:-0.0340>=-1.0)
+2026-11-18T11:34:54 | INFO    | hdd_rul.training.train       | entrainement d2306b93 termine: version 5 promoted (regression_toleree:-0.0340>=-1.0)
+  "decision": "promoted",
+  "reason": "regression_toleree:-0.0340>=-1.0",
+  "registered_version": "5",
+    "challenger": "5",
+    "previous": "1",
+    "champion": "5"
+alias du registre : {'champion': '5', 'challenger': '5', 'previous': '1'}
+
+$ curl -s -X POST localhost:8001/admin/reload
+{'available': True, 'model_version': '5', 'model_alias': 'champion', 'run_id': 'b11c9ae51d8b4af3a8cab659d015ed04', 'loaded_at': '2026-11-18T10:34:56+00:00'}
+$ curl -s localhost:8001/model  -> {'model_name': 'hdd-rul-hgb', 'model_version': '5', 'model_alias': 'champion', 'run_id': 'b11c9ae51d8b4af3a8cab659d015ed04'}
+
+# Retour arrière : la version précédente redevient champion
+$ uv run python -m hdd_rul.cli rollback
+2026-11-18T11:34:58 | WARNING | hdd_rul.training.registry    | retour arriere: champion 5 -> 1
+{
+  "champion": "1",
+  "previous": "5"
+}
+alias du registre : {'champion': '1', 'challenger': '5', 'previous': '5'}
+
+$ curl -s -X POST localhost:8001/admin/reload
+{'available': True, 'model_version': '1', 'model_alias': 'champion', 'run_id': '6d80ffa063844d03866e190d17724166', 'loaded_at': '2026-11-18T10:34:59+00:00'}
+$ curl -s localhost:8001/model  -> {'model_name': 'hdd-rul-hgb', 'model_version': '1', 'model_alias': 'champion', 'run_id': '6d80ffa063844d03866e190d17724166'}
+
+# Tags de la version retirée : le retour arrière est tracé dans le registre
+version 5 (alias previous)
+  promotion.champion_eval = same_validation
+  promotion.champion_mae = 28.4841
+  promotion.champion_mae_lt30 = 44.7719
+  promotion.champion_version = 1
+  promotion.decision = rolled_back
+  promotion.reason = regression_toleree:-0.0340>=-1.0

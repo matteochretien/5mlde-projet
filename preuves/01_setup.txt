@@ -1,0 +1,27 @@
+# Preuve 01 — installation dans un dossier vierge, lint, tests
+# Date : 2026-11-18 17:45 CET | machine : Darwin arm64 | commit : 9b5cfab
+# Clone neuf du dépôt (aucune donnée, aucun .venv), puis les commandes du README (section 3).
+
+$ git clone <depot> clone && cd clone && ls -A
+.env.example .git .gitignore DATA.md Dockerfile Drive_Stats_Schema_Current.csv README.md SOUTENANCE.md SYNTHESE_OPS.md TODO.md TRACABILITE.md api compose.yml config docs grafana loadtest mise.toml preuves pyproject.toml scripts sql src tests uv.lock 
+
+$ mise trust && mise install
+mise WARN  No untrusted config or environment files found.
+mise all tools are installed
+
+$ mise run setup
+ + zope-interface==8.7
+[setup] $ uv run python -c 'import hdd_rul; print(hdd_rul.__version__)'
+0.1.0
+
+$ mise run lint
+All checks passed!
+[lint] $ uv run ruff format --check .
+66 files already formatted
+
+$ mise run test
+..........................................                               [100%]
+114 passed in 77.04s (0:01:17)
+exit=0
+
+$ git status --short   # aucun fichier modifié ou créé hors .venv

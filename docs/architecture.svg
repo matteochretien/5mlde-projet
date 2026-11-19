@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="fleche" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="fleche-rouge" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+    </marker>
+    <style>
+      .zone { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.2; }
+      .boite { fill: #ffffff; stroke: #334155; stroke-width: 1.4; }
+      .prefect { fill: #eef2ff; stroke: #4f46e5; stroke-width: 1.4; }
+      .stockage { fill: #ecfdf5; stroke: #047857; stroke-width: 1.4; }
+      .service { fill: #fff7ed; stroke: #c2410c; stroke-width: 1.4; }
+      .alerte { fill: #fef2f2; stroke: #b91c1c; stroke-width: 1.4; }
+      .titre { font-size: 14px; font-weight: 700; fill: #0f172a; }
+      .zonetitre { font-size: 12px; font-weight: 700; fill: #64748b; letter-spacing: 0.06em; }
+      .detail { font-size: 11.5px; fill: #334155; }
+      .lien { stroke: #475569; stroke-width: 1.5; fill: none; marker-end: url(#fleche); }
+      .lien-alerte { stroke: #b91c1c; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; marker-end: url(#fleche-rouge); }
+      .etiquette { font-size: 11px; fill: #475569; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="760" fill="#ffffff"/>
+  <text x="40" y="38" font-size="20" font-weight="700" fill="#0f172a">Prédiction de la RUL des disques durs — chaîne MLOps</text>
+  <text x="40" y="60" class="detail">Pile Docker Compose : PostgreSQL, MLflow 3.18, serveur et runner Prefect 3, API FastAPI, Grafana. Données Backblaze Drive Stats (Q4 2025 → Q2 2026).</text>
+
+  <!-- Zone données -->
+  <rect x="30" y="80" width="300" height="640" rx="10" class="zone"/>
+  <text x="46" y="102" class="zonetitre">DONNÉES</text>
+
+  <rect x="50" y="116" width="260" height="70" rx="8" class="boite"/>
+  <text x="64" y="140" class="titre">Backblaze Drive Stats</text>
+  <text x="64" y="160" class="detail">archives trimestrielles (~2 Go)</text>
+  <text x="64" y="176" class="detail">cache + sha256 figés dans la config</text>
+
+  <rect x="50" y="214" width="260" height="84" rx="8" class="stockage"/>
+  <text x="64" y="238" class="titre">Couche bronze (DuckDB)</text>
+  <text x="64" y="258" class="detail">2 passes : historique des disques,</text>
+  <text x="64" y="274" class="detail">puis 90 j avant panne + sains échantillonnés</text>
+  <text x="64" y="290" class="detail">580 279 lignes, 3 497 pannes</text>
+
+  <rect x="50" y="326" width="260" height="70" rx="8" class="boite"/>
+  <text x="64" y="350" class="titre">Simulateur de rejeu</text>
+  <text x="64" y="370" class="detail">dépose une journée de Q2 2026</text>
+  <text x="64" y="386" class="detail">dans data/landing/ (≈ 345 000 lignes)</text>
+
+  <rect x="50" y="424" width="260" height="56" rx="8" class="stockage"/>
+  <text x="64" y="448" class="titre">data/landing/</text>
+  <text x="64" y="467" class="detail">dépôt surveillé par Prefect</text>
+
+  <rect x="50" y="508" width="260" height="92" rx="8" class="alerte"/>
+  <text x="64" y="532" class="titre">Contrat de données (GX)</text>
+  <text x="64" y="552" class="detail">bloquant : colonnes, failure ∈ {0,1}, date,</text>
+  <text x="64" y="568" class="detail">doublons, taux de pannes, quarantaine &gt; 5 %</text>
+  <text x="64" y="584" class="detail">quarantaine : capacité, disque déjà en panne</text>
+
+  <path d="M180,186 L180,214" class="lien"/>
+  <path d="M180,396 L180,424" class="lien"/>
+  <path d="M180,480 L180,508" class="lien"/>
+
+  <!-- Zone orchestration -->
+  <rect x="360" y="80" width="430" height="640" rx="10" class="zone"/>
+  <text x="376" y="102" class="zonetitre">ORCHESTRATION — PREFECT 3</text>
+
+  <rect x="380" y="116" width="390" height="190" rx="8" class="prefect"/>
+  <text x="394" y="140" class="titre">daily_batch</text>
+  <text x="394" y="158" class="detail">scrutation toutes les 30 s · un run à la fois</text>
+  <rect x="394" y="172" width="80" height="34" rx="6" class="alerte"/>
+  <text x="404" y="194" class="detail">validation</text>
+  <rect x="488" y="172" width="84" height="34" rx="6" class="boite"/>
+  <text x="496" y="194" class="detail">quarantaine</text>
+  <rect x="586" y="172" width="70" height="34" rx="6" class="boite"/>
+  <text x="598" y="194" class="detail">scoring</text>
+  <rect x="670" y="172" width="86" height="34" rx="6" class="boite"/>
+  <text x="680" y="194" class="detail">feedbacks</text>
+  <path d="M474,189 L486,189" class="lien"/>
+  <path d="M572,189 L584,189" class="lien"/>
+  <path d="M656,189 L668,189" class="lien"/>
+  <text x="394" y="232" class="detail">Lot refusé : il reste dans landing/, alerte critique,</text>
+  <text x="394" y="248" class="detail">rien n'est produit en aval. Lot traité : déplacé dans</text>
+  <text x="394" y="264" class="detail">processed/, prédictions et feedbacks en base.</text>
+  <text x="394" y="288" class="detail">Feedback = vraie RUL connue à la panne, ou à J + 90.</text>
+
+  <rect x="380" y="330" width="390" height="214" rx="8" class="prefect"/>
+  <text x="394" y="354" class="titre">train_pipeline</text>
+  <text x="394" y="372" class="detail">cron 02:17 · as_of = dernier lot reçu (pas d'avenir)</text>
+  <rect x="394" y="386" width="112" height="34" rx="6" class="boite"/>
+  <text x="404" y="408" class="detail">labels / split</text>
+  <rect x="524" y="380" width="104" height="22" rx="5" class="boite"/>
+  <text x="534" y="396" class="detail">training HGB</text>
+  <rect x="524" y="406" width="104" height="22" rx="5" class="boite"/>
+  <text x="534" y="422" class="detail">training médiane</text>
+  <rect x="646" y="386" width="110" height="34" rx="6" class="boite"/>
+  <text x="654" y="402" class="detail">évaluation</text>
+  <text x="654" y="415" class="detail">publication</text>
+  <path d="M506,403 L522,391" class="lien"/>
+  <path d="M506,403 L522,417" class="lien"/>
+  <path d="M628,391 L644,401" class="lien"/>
+  <path d="M628,417 L644,407" class="lien"/>
+  <text x="394" y="446" class="detail">Règle de mise en service : le champion est réévalué sur</text>
+  <text x="394" y="462" class="detail">la validation du challenger ; promotion si MAE (RUL &lt; 30 j)</text>
+  <text x="394" y="478" class="detail">−5 % et MAE globale ≤ +2 %. Sinon rejet chiffré en tag.</text>
+  <text x="394" y="502" class="detail">Split temporel + groupé par disque (aucune fuite).</text>
+  <text x="394" y="526" class="detail">Retries courts, hook on_failure → alerte.</text>
+
+  <rect x="380" y="568" width="390" height="56" rx="8" class="prefect"/>
+  <text x="394" y="592" class="titre">ingest_quarter</text>
+  <text x="394" y="611" class="detail">téléchargement en cache → bronze (à la demande)</text>
+
+  <rect x="380" y="648" width="390" height="56" rx="8" class="alerte"/>
+  <text x="394" y="672" class="titre">Alertes → workflow Teams</text>
+  <text x="394" y="691" class="detail">Adaptive Card : lot refusé, échec de flow, décision</text>
+
+  <path d="M310,452 C340,452 350,200 378,200" class="lien"/>
+  <text x="318" y="300" class="etiquette">déclenche</text>
+  <path d="M310,255 C345,255 350,420 378,420" class="lien"/>
+  <path d="M575,306 L575,330" class="lien" opacity="0"/>
+  <path d="M760,206 C775,206 790,640 772,672" class="lien-alerte"/>
+  <path d="M770,520 C785,560 785,630 772,676" class="lien-alerte"/>
+
+  <!-- Zone modèles et service -->
+  <rect x="820" y="80" width="430" height="640" rx="10" class="zone"/>
+  <text x="836" y="102" class="zonetitre">MODÈLES, SERVICE, SUPERVISION</text>
+
+  <rect x="840" y="116" width="390" height="118" rx="8" class="stockage"/>
+  <text x="854" y="140" class="titre">MLflow 3.18 (backend PostgreSQL)</text>
+  <text x="854" y="160" class="detail">runs : paramètres, métriques, tags data.* / git.commit</text>
+  <text x="854" y="176" class="detail">artefacts servis par le serveur (manifeste, résidus)</text>
+  <text x="854" y="196" class="detail">registre : alias champion · challenger · previous</text>
+  <text x="854" y="216" class="detail">rollback = échange champion ↔ previous</text>
+
+  <rect x="840" y="262" width="390" height="140" rx="8" class="service"/>
+  <text x="854" y="286" class="titre">API FastAPI (uvicorn, OMP_NUM_THREADS=1)</text>
+  <text x="854" y="306" class="detail">POST /predict · POST /predict/batch (≤ 5 000)</text>
+  <text x="854" y="322" class="detail">POST /feedback · GET /model · POST /admin/reload</text>
+  <text x="854" y="338" class="detail">GET /health : ok · degraded (base ou MLflow) · 503</text>
+  <text x="854" y="358" class="detail">validation Pydantic stricte, version dans chaque réponse,</text>
+  <text x="854" y="374" class="detail">modèle chargé une fois par worker, gardé si reload raté</text>
+  <text x="854" y="392" class="detail">~250 req/s par worker en unitaire, p95 &lt; 30 ms</text>
+
+  <rect x="840" y="430" width="390" height="96" rx="8" class="stockage"/>
+  <text x="854" y="454" class="titre">PostgreSQL — schéma tracing</text>
+  <text x="854" y="474" class="detail">predictions · feedbacks · api_requests</text>
+  <text x="854" y="490" class="detail">pipeline_runs · quarantine · model_versions</text>
+  <text x="854" y="510" class="detail">écriture tolérante aux pannes (jamais bloquante)</text>
+
+  <rect x="840" y="554" width="390" height="70" rx="8" class="service"/>
+  <text x="854" y="578" class="titre">Grafana — 3 vues</text>
+  <text x="854" y="598" class="detail">technique · métier · croisée (MAE validation vs prod)</text>
+
+  <rect x="840" y="648" width="390" height="56" rx="8" class="boite"/>
+  <text x="854" y="672" class="titre">Locust</text>
+  <text x="854" y="691" class="detail">campagne de charge : 1 à 8 workers, lots 1 à 1 000</text>
+
+  <path d="M770,410 C800,410 810,175 838,175" class="lien"/>
+  <text x="784" y="300" class="etiquette">publie</text>
+  <path d="M1035,234 L1035,262" class="lien"/>
+  <text x="1043" y="252" class="etiquette">charge le champion</text>
+  <path d="M1035,402 L1035,430" class="lien"/>
+  <path d="M1035,526 L1035,554" class="lien"/>
+  <path d="M770,240 C805,240 810,478 838,478" class="lien"/>
+  <text x="784" y="470" class="etiquette">traces</text>
+  <path d="M1240,676 C1262,676 1262,330 1232,330" class="lien"/>
+</svg>

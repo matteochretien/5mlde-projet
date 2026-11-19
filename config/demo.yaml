@@ -1,0 +1,28 @@
+# Overlay de démonstration : jeu synthétique réduit, entraînement de quelques
+# secondes. Utilisé par les tests et par scripts/demo_nominal.sh.
+#   uv run python -m hdd_rul.cli train --config config/demo.yaml
+horizon_days: 90
+
+paths:
+  root: data/demo
+  artifacts: artifacts/demo
+
+sampling:
+  healthy_rate_pct: 45
+  healthy_stride_days: 3
+
+training:
+  hgb:
+    max_iter: 60
+    early_stopping: false
+
+mlflow:
+  experiment_name: hdd-rul-demo
+  registered_model_name: hdd-rul-hgb-demo
+
+synthetic:
+  n_drives: 500
+  start_date: "2025-12-01"
+  end_date: "2026-05-31"
+  daily_failure_rate: 0.0012
+  seed: 42

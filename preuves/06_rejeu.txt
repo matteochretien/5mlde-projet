@@ -1,0 +1,83 @@
+# Preuve 06 — rejeu jour par jour : dépôt, déclenchement automatique, validation, scoring, feedbacks
+# Date : 2026-11-18 11:32 CET | commit : af6874c | pile Compose, champion v1
+# Le simulateur dépose les journées dans data/landing/ ; c'est le deployment Prefect
+# 'daily-batch-landing' (scrutation toutes les 30 s, un run à la fois) qui les traite.
+# Les journées du 2026-04-01 au 2026-04-06 ont été rejouées plus tôt de la même façon.
+# Les logs des conteneurs sont en UTC (heure locale = UTC + 1).
+# À lire : chaque « Aborted submission ... non-pending state » est un tick de scrutation
+# annulé parce qu'un lot est déjà en cours (limite de concurrence à 1, CANCEL_NEW).
+# Les feedbacks augmentent avec le rejeu : quand un disque tombe en panne le jour J,
+# toutes ses prédictions depuis le 1er avril reçoivent leur vraie RUL. Les survies à J+90
+# n'apparaîtront qu'au-delà du 30 juin (horizon de 90 jours après les premières prédictions).
+
+$ uv run python -m hdd_rul.cli replay --start 2026-04-07 --limit 2 --deposit-only
+2026-11-18T11:30:03 | INFO    | hdd_rul.ingestion.landing    | lot deposé dans landing: 2026-04-07.csv
+2026-11-18T11:30:03 | INFO    | hdd_rul.ingestion.landing    | lot deposé dans landing: 2026-04-08.csv
+2 lot(s) rejoue(s)
+
+$ docker compose logs prefect-runner   # filtre : etapes du flow, sans le bruit HTTP ni les barres de progression
+2026-11-18T10:30:26 | INFO    | prefect.flow_runs            | View at http://prefect:4200/runs/flow-run/01a1ee25-a6b9-755d-8922-4e3f34cfd93d
+2026-11-18T10:30:28 | INFO    | hdd_rul.validation.contract  | contrat respecte sur 2026-04-07.csv: 346375 lignes, 0 avertissement(s), 0 en quarantaine
+2026-11-18T10:30:28 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:30:29 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:30:53 | INFO    | prefect.runner.state_proposer | Aborted submission of flow run '01a1ee25-a6b9-70dd-a2bb-0d1a876140ab': Server returned a non-pending state 'CANCELLED'
+2026-11-18T10:30:57 | INFO    | prefect.task_runs            | 346375 lignes scorees, 203 disques a risque (<30 j)
+2026-11-18T10:30:58 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:31:08 | INFO    | hdd_rul.serving.feedback     | 191 feedback(s) enregistre(s) pour le lot 2026-04-07 (seuil de survie: 2026-01-07)
+2026-11-18T10:31:08 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:31:08 | INFO    | hdd_rul.ingestion.landing    | lot 2026-04-07.csv traite -> /app/data/processed/2026-04-07.csv
+2026-11-18T10:31:08 | INFO    | prefect.flow_runs            | Finished in state Completed()
+2026-11-18T10:31:26 | INFO    | prefect.flow_runs            | Beginning flow run 'bulky-hedgehog' for flow 'daily_batch'
+2026-11-18T10:31:26 | INFO    | prefect.flow_runs            | View at http://prefect:4200/runs/flow-run/01a1ee25-a6b9-704c-81f9-a1fabd33fd8c
+2026-11-18T10:31:28 | INFO    | hdd_rul.validation.contract  | contrat respecte sur 2026-04-08.csv: 346361 lignes, 0 avertissement(s), 0 en quarantaine
+2026-11-18T10:31:28 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:31:29 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:31:50 | INFO    | prefect.runner.state_proposer | Aborted submission of flow run '01a1ee25-a6b9-70ab-8569-2c17956a1651': Server returned a non-pending state 'CANCELLED'
+2026-11-18T10:32:02 | INFO    | prefect.task_runs            | 346361 lignes scorees, 204 disques a risque (<30 j)
+2026-11-18T10:32:03 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:32:14 | INFO    | hdd_rul.serving.feedback     | 176 feedback(s) enregistre(s) pour le lot 2026-04-08 (seuil de survie: 2026-01-08)
+2026-11-18T10:32:14 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:32:14 | INFO    | hdd_rul.ingestion.landing    | lot 2026-04-08.csv traite -> /app/data/processed/2026-04-08.csv
+2026-11-18T10:32:15 | INFO    | prefect.flow_runs            | Finished in state Completed()
+2026-11-18T10:32:25 | INFO    | prefect.flow_runs            | Beginning flow run 'able-hamster' for flow 'daily_batch'
+2026-11-18T10:32:25 | INFO    | prefect.flow_runs            | View at http://prefect:4200/runs/flow-run/01a1ee25-a6b9-706e-9c28-31d5ac52e5e6
+2026-11-18T10:32:25 | INFO    | prefect.flow_runs            | aucun lot en attente dans /app/data/landing
+
+$ ls data/landing data/processed
+landing   : (vide)
+processed : 2026-04-01.csv 2026-04-02.csv 2026-04-03.csv 2026-04-04.csv 2026-04-05.csv 2026-04-06.csv 2026-04-07.csv 2026-04-08.csv 
+
+$ psql -d hdd_rul   # ce qui a ete persiste pour la supervision (schema tracing)
+    jour    | predictions | alertes_moins_30j | model_version 
+------------+-------------+-------------------+---------------
+ 2026-04-01 |      345738 |               190 | 1
+ 2026-04-02 |      345603 |               199 | 1
+ 2026-04-03 |      345377 |               191 | 1
+ 2026-04-04 |      345143 |               182 | 1
+ 2026-04-05 |      345596 |               185 | 1
+ 2026-04-06 |      346134 |               204 | 1
+ 2026-04-07 |      346375 |               203 | 1
+ 2026-04-08 |      346361 |               204 | 1
+ 2026-05-01 |          15 |                 0 | 1
+ 2026-05-20 |           6 |                 0 | 1
+ 2026-11-18 |           4 |                 0 | 1
+(11 rows)
+-- les 25 lignes datees 2026-05-01, 2026-05-20 et 2026-11-18 viennent d'appels directs a POST /predict
+
+  recu_le   |     source     | feedbacks | rul_reelle_moyenne 
+------------+----------------+-----------+--------------------
+ 2026-11-18 | replay_failure |       550 |                2.5
+(1 row)
+
+  flow_name  |  status   |   batch_name   |     recorded_at     
+-------------+-----------+----------------+---------------------
+ daily_batch | completed | 2026-04-01.csv | 2026-11-18 09:02:30
+ daily_batch | completed | 2026-04-02.csv | 2026-11-18 09:37:39
+ daily_batch | completed | 2026-04-03.csv | 2026-11-18 09:38:37
+ daily_batch | completed | 2026-04-04.csv | 2026-11-18 09:39:38
+ daily_batch | completed | 2026-04-05.csv | 2026-11-18 09:40:43
+ daily_batch | completed | 2026-04-06.csv | 2026-11-18 09:41:52
+ daily_batch | completed | 2026-04-07.csv | 2026-11-18 10:31:08
+ daily_batch | completed | 2026-04-08.csv | 2026-11-18 10:32:15
+(8 rows)
+

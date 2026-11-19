@@ -1,0 +1,109 @@
+# ---------------------------------------------------------------------------
+# Configuration de référence. Toute valeur peut être surchargée par un fichier
+# d'overlay (config/demo.yaml, config/replay.yaml) passé en --config.
+# Validée au chargement par les modèles Pydantic de hdd_rul.common.config.
+# ---------------------------------------------------------------------------
+
+# Horizon de censure : la RUL est plafonnée à H jours. H = « pas de panne en vue ».
+horizon_days: 90
+
+paths:
+  root: data            # data/cache, data/raw, data/bronze, data/landing, data/quarantine
+  artifacts: artifacts  # rapports GX, graphiques, manifestes de données
+
+data:
+  base_url: https://f001.backblazeb2.com/file/Backblaze-Hard-Drive-Data
+  # Rôle de chaque trimestre (cf. README section « Données »).
+  quarters:
+    history: ["Q4_2025"]   # fournit les 90 jours précédant les pannes de début Q1
+    train: ["Q1_2026"]     # entraînement initial
+    replay: ["Q2_2026"]    # rejoué jour par jour pour simuler le temps
+  # sha256 relevés au premier téléchargement et figés ici (cf. DATA.md).
+  checksums:
+    Q1_2026: "cad66574292b89bae8ec8370dbb5e90d2e0b45d61341502708df328fdb15ed5c"
+    Q2_2026: "b30be47290580c1aee9a5155afadc97c26e36220722bc5ee689108e949c74acc"
+    Q4_2025: "57d0667cc03f23f16ded693e1e83e1ed28b7ea42d54b88d221734f5926030cb5"
+
+features:
+  # Attributs SMART *raw* retenus en v1 (l'état du jour seulement).
+  smart_raw: [5, 9, 12, 187, 188, 193, 194, 197, 198, 199]
+  # Les modèles de disque hors top-K sont regroupés dans la modalité « autre ».
+  top_k_models: 20
+  other_model_label: __other__
+  use_vendor: true        # constructeur dérivé du préfixe de `model`
+  use_capacity_tb: true
+
+sampling:
+  # Échantillon déterministe de disques sains : hash(serial) % 100 < healthy_rate_pct.
+  healthy_rate_pct: 4
+  # Sous-échantillonnage temporel des sains : une ligne tous les k jours.
+  healthy_stride_days: 7
+  hash_salt: hdd-rul-v1
+  seed: 20261105
+
+split:
+  # Split temporel (les dates les plus récentes en validation) ET groupe par
+  # serial_number : deux jours consécutifs d'un même disque sont quasi identiques.
+  valid_fraction: 0.2
+  alert_threshold_days: 30   # zone d'exploitation : RUL < 30 j
+
+validation:
+  # Contrat de données appliqué AVANT tout prétraitement.
+  required_columns: [date, serial_number, model, capacity_bytes, failure]
+  temperature_range: [0, 80]
+  # Au-delà de ce taux de pannes sur un lot journalier, le fichier est suspect.
+  max_daily_failure_rate: 0.01
+  # Colonnes dont une valeur invalide met la ligne en quarantaine sans
+  # rejeter le lot entier (Backblaze contient parfois capacity_bytes = -1).
+  quarantine_on: [capacity_bytes]
+  max_quarantine_fraction: 0.05
+  # Coquilles présentés dans le schéma Backblaze courant, tolérées explicitement.
+  tolerated_typo_columns: [smart_211_normailized, smart_212_normailized]
+
+training:
+  baseline:
+    strategy: median
+  hgb:
+    max_iter: 300
+    learning_rate: 0.08
+    max_depth: 8
+    min_samples_leaf: 40
+    l2_regularization: 0.5
+    early_stopping: true
+    validation_fraction: 0.1
+    random_state: 20261105
+
+mlflow:
+  experiment_name: hdd-rul
+  registered_model_name: hdd-rul-hgb
+  tracking_uri: null        # null => variable MLFLOW_TRACKING_URI, sinon http://localhost:5050
+
+promotion:
+  # Le challenger est promu si la MAE sur RUL < 30 j s'améliore d'au moins 5 %
+  # sans dégrader la MAE globale de plus de 2 %, et si la validation est verte.
+  min_mae_lt30_improvement: 0.05
+  max_mae_global_degradation: 0.02
+  require_validation_passed: true
+
+alerts:
+  webhook_url: null         # null => variable HDD_RUL_WEBHOOK_URL
+  timeout_seconds: 5
+  tag: hdd-rul              # préfixe du titre, pour reconnaître le projet dans le canal
+  environment: null         # null => HDD_RUL_ALERT_ENV, sinon utilisateur@machine
+  # Liens directs de la carte : adresses vues depuis le navigateur, pas depuis
+  # les conteneurs. Surchargeables par HDD_RUL_PREFECT_UI_URL,
+  # HDD_RUL_MLFLOW_UI_URL et HDD_RUL_GRAFANA_URL.
+  links:
+    prefect_ui: http://localhost:4200
+    mlflow_ui: http://localhost:5050
+    grafana: http://localhost:3000
+    grafana_dashboard_uid: hdd-rul-main
+
+synthetic:
+  # Générateur de données Drive Stats pour une exécution reproductible hors ligne
+  # (le téléchargement réel fait ~3 x 2 Go). Cf. README section « Données ».
+  n_drives: 1200
+  start_date: "2025-10-01"
+  end_date: "2026-06-30"
+  daily_failure_rate: 0.0004
+  seed: 20261105

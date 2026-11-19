@@ -1,0 +1,12 @@
+# Overlay de DEMONSTRATION uniquement : promeut tout challenger dont les contrôles
+# qualité sont verts, quelles que soient ses métriques.
+#
+# Sert à montrer le retour arrière : il faut une promotion pour avoir une version
+# `previous` à restaurer, et la règle de référence (config/base.yaml) rejette à
+# juste titre les challengers moins bons que le champion. On change la règle par
+# configuration, sans toucher au code, et la raison reste tracée sur la version.
+#   uv run python -m hdd_rul.cli --config config/promotion_permissive.yaml train --as-of 2026-05-15
+#   uv run python -m hdd_rul.cli rollback
+promotion:
+  min_mae_lt30_improvement: -1.0
+  max_mae_global_degradation: 1.0

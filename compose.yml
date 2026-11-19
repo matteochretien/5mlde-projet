@@ -1,0 +1,192 @@
+# ---------------------------------------------------------------------------
+# Pile complète : PostgreSQL (traces + backends MLflow/Prefect), serveur MLflow,
+# serveur Prefect, runner de deployments, API de prédiction, Grafana.
+#   docker compose up -d --build        (ou `mise run up`)
+# ---------------------------------------------------------------------------
+name: hdd-rul
+
+x-app-env: &app-env
+  HDD_RUL_CONFIG: ${HDD_RUL_CONFIG:-config/base.yaml}
+  HDD_RUL_DATA_DIR: /app/data
+  HDD_RUL_WEBHOOK_URL: ${HDD_RUL_WEBHOOK_URL:-}
+  # Liens des alertes : adresses vues depuis le navigateur, pas depuis le réseau
+  # Compose (http://mlflow:5000 ne s'ouvre pas depuis Teams).
+  HDD_RUL_MLFLOW_UI_URL: http://localhost:${MLFLOW_PORT:-5050}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-hdd-rul}
+  # Relances HTTP courtes côté client MLflow. Par défaut, 7 relances avec un
+  # délai croissant : un appel bloquait environ 4 min quand MLflow était arrêté
+  # (/admin/reload sans réponse en 200 s, cf. preuves/10). Avec 2 relances, l'API
+  # renvoie vite un 503 et ce sont les retries Prefect, visibles dans
+  # l'interface, qui gèrent la panne côté pipeline.
+  MLFLOW_HTTP_REQUEST_MAX_RETRIES: "2"
+  MLFLOW_HTTP_REQUEST_BACKOFF_FACTOR: "1"
+  MLFLOW_HTTP_REQUEST_TIMEOUT: "30"
+  PREFECT_API_URL: http://prefect:4200/api
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-hdd_rul}
+  POSTGRES_USER: ${POSTGRES_USER:-hdd}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+
+services:
+  # --- PostgreSQL : un seul serveur, trois bases ---------------------------
+  # `hdd_rul` (traces, lue par Grafana), `mlflow` (backend du registre de
+  # modèles, qui n'existe pas sur un store fichier) et `prefect`.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hdd_rul}
+      POSTGRES_USER: ${POSTGRES_USER:-hdd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql/init-db.sql:/docker-entrypoint-initdb.d/10-init-db.sql:ro
+      - ./sql/init-extra-databases.sql:/docker-entrypoint-initdb.d/20-extra-databases.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hdd} -d ${POSTGRES_DB:-hdd_rul}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # --- MLflow : tracking + registre de modèles ----------------------------
+  # Les artefacts passent par le serveur (proxy `mlflow-artifacts:/`) : un
+  # `--default-artifact-root /mlartifacts` ferait écrire chaque client dans SON
+  # /mlartifacts local (inexistant sur l'hôte, absent du conteneur de l'API),
+  # et l'API ne pourrait jamais charger le champion.
+  # Version du serveur = version du client dans uv.lock : un client 3.x publié
+  # ses modèles via l'API `logged-models`, absente d'un serveur 2.x.
+  # `--allowed-hosts` : depuis MLflow 3, seuls localhost et les IP privées sont
+  # acceptés par défaut ; les conteneurs appellent `mlflow:5000`.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    command: >
+      bash -c "pip install --quiet 'psycopg[binary]' &&
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER:-hdd}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/mlflow
+      --serve-artifacts --artifacts-destination /mlartifacts
+      --allowed-hosts 'mlflow,mlflow:5000,localhost,localhost:5000,localhost:${MLFLOW_PORT:-5050},127.0.0.1,127.0.0.1:5000,127.0.0.1:${MLFLOW_PORT:-5050}'"
+    environment:
+      MLFLOW_HTTP_REQUEST_TIMEOUT: "120"
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+    ports:
+      # 5050 côté hôte : sur macOS, le port 5000 est pris par le récepteur AirPlay
+      # (ControlCenter répond 403 « AirTunes »). Les conteneurs utilisent mlflow:5000.
+      - "${MLFLOW_PORT:-5050}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # --- Prefect : serveur d'orchestration ----------------------------------
+  prefect:
+    image: prefecthq/prefect:3.8.7-python3.12
+    # SQLAlchemy est épinglé AVANT le démarrage : l'image embarque SQLAlchemy
+    # 2.1.x, incompatible avec le planificateur de Prefect 3.8 (le service
+    # `schedule_deployments` plante toutes les 60 s sur « Can't evaluate bulk
+    # DML statement » et aucun run planifié n'est créé). Constaté au TP6,
+    # trace dans preuves/.
+    command: >
+      bash -c "pip install --quiet 'sqlalchemy[asyncio]>=2.0.40,<2.1' asyncpg &&
+      prefect server start --host 0.0.0.0"
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${POSTGRES_USER:-hdd}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/prefect
+      PREFECT_API_URL: http://localhost:4200/api
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+    ports:
+      - "4200:4200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:4200/api/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # --- Runner : enregistre les deployments et les exécute -----------------
+  prefect-runner:
+    build: .
+    command: ["python", "-m", "hdd_rul.orchestration.deployments"]
+    environment:
+      <<: *app-env
+      HDD_RUL_BATCH_INTERVAL: "${HDD_RUL_BATCH_INTERVAL:-30}"
+      # Le nom d'hôte d'un conteneur est un identifiant illisible dans une alerte.
+      HDD_RUL_ALERT_ENV: "${HDD_RUL_ALERT_ENV:-pile Compose (prefect-runner)}"
+      HDD_RUL_TRAIN_CRON: "${HDD_RUL_TRAIN_CRON:-17 2 * * *}"
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+    depends_on:
+      prefect:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+
+  # --- API de prédiction ---------------------------------------------------
+  api:
+    build: .
+    command:
+      - uvicorn
+      - api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --workers
+      - "${API_WORKERS:-1}"
+    environment:
+      <<: *app-env
+      # Un thread OpenMP par prédiction. Par défaut, HistGradientBoosting
+      # parallélise chaque prédiction sur tous les cœurs : deux requêtes
+      # simultanées se disputent alors les mêmes cœurs et le débit s'effondre
+      # (mesuré : 31 req/s à 4 workers, contre 543 avec ce réglage). La
+      # concurrence vient des workers uvicorn, pas des threads du modèle.
+      OMP_NUM_THREADS: "1"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "${API_PORT:-8001}:8001"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # --- Supervision ---------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+      HDD_RUL_DB: ${POSTGRES_DB:-hdd_rul}
+      HDD_RUL_DB_USER: ${POSTGRES_USER:-hdd}
+      HDD_RUL_DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  mlflow-artifacts:
+  grafana-data:

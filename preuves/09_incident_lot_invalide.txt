@@ -1,0 +1,133 @@
+# Preuve 09 — incidents de données contrôles : lot invalide bloqué, lignes non conformes en quarantaine
+# Date : 2026-11-18 11:37 CET | commit : af6874c | pile Compose, champion v1
+# Les lots sont déposés dans data/landing/ : c'est le deployment Prefect 'daily-batch-landing'
+# (scrutation toutes les 30 s) qui les prend, sans intervention. Logs des conteneurs en UTC.
+
+############################################################################
+# Incident 1 — lot invalide : le contrat bloque, alerte, arrêt du flow
+############################################################################
+
+$ uv run python scripts/faults.py lot-invalide --source data/raw/2026-04-10.csv
+#   copie corrompue de la journée du 10 avril : 4 violations bloquantes simultanées
+#   (failure = 2 sur 3 lignes, une date du lendemain, smart_197_raw supprimée, un serial dupliqué)
+2026-11-18T11:35:26 | WARNING | __main__                     | lot corrompu ecrit: data/landing/2026-04-10.csv (source: 2026-04-10.csv)
+2026-11-18T11:35:26 | INFO    | __main__                     | lot depose dans data/landing/2026-04-10.csv
+data/landing/2026-04-10.csv
+
+$ docker compose logs prefect-runner   # filtre : sans traceback ni bruit HTTP
+2026-11-18T10:35:26 | INFO    | prefect.flow_runs            | Beginning flow run 'humorous-boa' for flow 'daily_batch'
+2026-11-18T10:35:28 | INFO    | hdd_rul.validation.contract  | contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_values_to_be_in_set(failure), expect_column_to_exist(smart_197_raw)
+2026-11-18T10:35:28 | ERROR   | hdd_rul.common.notifications | ALERTE[critical] Lot de donnees refuse — contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_values_to_be_in_set(failure), expect_column_to_exist(smart_197_raw) | {'lot'
+2026-11-18T10:35:28 | ERROR   | prefect.task_runs            | Task run failed with exception: DataContractError('contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_values_to_be_in_set(failure), expect_column_to_exist(smart_197_raw)'
+2026-11-18T10:35:28 | ERROR   | prefect.task_runs            | Finished in state Failed('Task run encountered an exception DataContractError: contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_values_to_be_in_set(failure), expect_col
+2026-11-18T10:35:29 | ERROR   | prefect.flow_runs            | Encountered exception during execution: DataContractError('contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_values_to_be_in_set(failure), expect_column_to_exist(smart_1
+2026-11-18T10:35:29 | INFO    | prefect.flow_runs            | Running hook 'alert_on_failure' in response to entering state 'Failed'
+2026-11-18T10:35:29 | ERROR   | hdd_rul.common.notifications | ALERTE[critical] Echec du flow daily_batch — Etat: FAILED — Flow run encountered an exception: DataContractError: contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_v
+2026-11-18T10:35:29 | INFO    | prefect.flow_runs            | Finished in state Failed('Flow run encountered an exception: DataContractError: contrat viole sur 2026-04-10.csv: expect_column_distinct_values_to_equal_set(date), expect_column_values_to_be_unique(serial_number), expect_column_values_to_be_in_set(failure), expect_co
+2026-11-18T10:35:55 | INFO    | prefect.flow_runs            | Beginning flow run 'favorite-raptor' for flow 'daily_batch'
+2026-11-18T10:35:55 | INFO    | prefect.flow_runs            | aucun lot en attente dans /app/data/landing
+2026-11-18T10:35:56 | INFO    | prefect.flow_runs            | Finished in state Completed()
+
+$ jq '.blocking_failures' artifacts/validation/2026-04-10_20261118T103528+0000.json   # rapport de validation archive
+passed=False  total_rows=330990  quarantined_rows=0
+  BLOQUANT  expect_column_distinct_values_to_equal_set(date)  ecarts=1  exemple=['2026-04-11']
+  BLOQUANT  expect_column_values_to_be_unique(serial_number)  ecarts=2  exemple=['ZL2300DA', 'ZL2300DA']
+  BLOQUANT  expect_column_values_to_be_in_set(failure)  ecarts=3  exemple=[2, 2]
+  BLOQUANT  expect_column_to_exist(smart_197_raw)  ecarts=None  exemple=[]
+  + 23 autres expectations respectees, dont 2 des 3 personnalisees :
+    expect_column_values_to_be_valid_drive_serial(serial_number)
+    expect_drive_failure_rate_to_be_below  observe=8.76e-05 (seuil 1 %)
+  ! La 3e, expect_column_values_to_not_be_known_failed_drive (non-resurrection d'un disque
+    en panne), n'apparait pas : a ce moment-la, le deployment planifie ne fournissait pas la
+    liste des disques deja en panne. Corrige le meme jour : voir « Apres correction » en fin
+    de fichier.
+
+# Rien n'a été produit en aval pour ce lot : ni lot propre, ni prédictions
+$ ls data/bronze/landing_clean/2026-04-10.parquet data/processed/2026-04-10.csv
+data/bronze/landing_clean/2026-04-10.parquet: No such file or directory
+data/processed/2026-04-10.csv: No such file or directory
+predictions datees du 2026-04-10 : 0
+  flow_name  |        status         | trigger |     recorded_at     
+-------------+-----------------------+---------+---------------------
+ daily_batch | blocked_by_validation | landing | 2026-11-18 10:35:28
+ daily_batch | failed                | hook    | 2026-11-18 10:35:29
+(2 rows)
+
+$ curl -s localhost:8001/model   -> {'model_version': '1', 'model_alias': 'champion', 'run_id': '6d80ffa063844d03866e190d17724166'} # toujours le meme champion
+$ curl -s -o /dev/null -w "%{http_code}" localhost:8001/health  -> 200
+
+# Un lot refusé RESTE dans data/landing/ (on le corrige puis on le rejoue). Ici, c'est une
+# copie corrompue fabriquée pour la démonstration : on la retire, sinon chaque tick de
+# scrutation la refuserait de nouveau, avec une alerte à chaque fois.
+$ rm data/landing/2026-04-10.csv
+
+############################################################################
+# Incident 2 — règle non bloquante : quarantaine, le lot continue
+############################################################################
+
+$ uv run python scripts/faults.py lot-quarantaine --source data/raw/2026-04-09.csv
+#   2 % des lignes avec capacity_bytes = -1 (Backblaze publie parfois -1), sous le seuil de 5 %
+2026-11-18T11:36:15 | WARNING | __main__                     | 6932 ligne(s) a capacite invalide dans 2026-04-09.csv
+2026-11-18T11:36:15 | INFO    | __main__                     | lot depose dans data/landing/2026-04-09.csv
+data/landing/2026-04-09.csv
+
+$ docker compose logs prefect-runner
+2026-11-18T10:36:26 | INFO    | prefect.flow_runs            | Beginning flow run 'amorphous-bison' for flow 'daily_batch'
+2026-11-18T10:36:27 | INFO    | hdd_rul.validation.contract  | contrat respecte sur 2026-04-09.csv: 346647 lignes, 1 avertissement(s), 6932 en quarantaine
+2026-11-18T10:36:27 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:36:28 | WARNING | hdd_rul.validation.contract  | 6932 ligne(s) en quarantaine -> /app/data/quarantine/2026-04-09.parquet
+2026-11-18T10:36:29 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:36:46 | INFO    | prefect.runner.state_proposer | Aborted submission of flow run '01a1ee25-a6b9-7ce5-b714-7a07275f5778': Server returned a non-pending state 'CANCELLED'
+2026-11-18T10:37:03 | INFO    | prefect.task_runs            | 339715 lignes scorees, 192 disques a risque (<30 j)
+2026-11-18T10:37:04 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:37:16 | INFO    | hdd_rul.serving.feedback     | 201 feedback(s) enregistre(s) pour le lot 2026-04-09 (seuil de survie: 2026-01-09)
+2026-11-18T10:37:16 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:37:16 | INFO    | hdd_rul.ingestion.landing    | lot 2026-04-09.csv traite -> /app/data/processed/2026-04-09.csv
+2026-11-18T10:37:17 | INFO    | prefect.flow_runs            | Finished in state Completed()
+2026-11-18T10:37:26 | INFO    | prefect.flow_runs            | Beginning flow run 'vegan-chital' for flow 'daily_batch'
+2026-11-18T10:37:27 | INFO    | prefect.flow_runs            | Finished in state Completed()
+
+rapport 2026-04-09_20261118T103627+0000.json : passed=True  total_rows=346647  quarantined_rows=6932  fraction=0.020
+  AVERTISSEMENT  expect_column_values_to_be_between(capacity_bytes)  ecarts=6932  exemple=[-1, -1]
+$ ls -l data/quarantine
+611792 2026-04-09.parquet
+   batch_name   | batch_date | rows |                reason                |     recorded_at     
+----------------+------------+------+--------------------------------------+---------------------
+ 2026-04-09.csv | 2026-04-09 | 6932 | capacity_bytes <= 0 ou non numerique | 2026-11-18 10:36:29
+(1 row)
+
+
+############################################################################
+# Après correction (18 novembre, 13:30) — règle de non-résurrection active
+############################################################################
+# Le flow calcule désormais lui-même les disques déjà en panne (historique ingéré +
+# lots déjà traités). Sur données réelles, un disque déclaré en panne continue d'émettre :
+# la règle met ses lignes en quarantaine au lieu de bloquer tout le trimestre. Une
+# résurrection massive dépasse le plafond de quarantaine (5 %) et bloque (tests).
+
+$ uv run python -m hdd_rul.cli replay --start 2026-04-10 --limit 1 --deposit-only   # la VRAIE journee du 10
+2026-11-18T13:30:11 | INFO    | hdd_rul.ingestion.landing    | lot deposé dans landing: 2026-04-10.csv
+1 lot(s) rejoue(s)
+
+$ docker compose logs prefect-runner
+2026-11-18T12:32:30 | INFO    | prefect.flow_runs            | Beginning flow run 'puzzling-turtle' for flow 'daily_batch'
+2026-11-18T12:32:30 | INFO    | prefect.flow_runs            | 2142 disque(s) deja en panne avant le 2026-04-10
+2026-11-18T12:32:32 | INFO    | hdd_rul.validation.contract  | contrat respecte sur 2026-04-10.csv: 346549 lignes, 1 avertissement(s), 1 en quarantaine
+2026-11-18T12:32:32 | WARNING | hdd_rul.validation.contract  | 1 ligne(s) en quarantaine -> /app/data/quarantine/2026-04-10.parquet
+2026-11-18T12:33:08 | INFO    | prefect.task_runs            | 346548 lignes scorees, 202 disques a risque (<30 j)
+2026-11-18T12:33:23 | INFO    | hdd_rul.serving.feedback     | 189 feedback(s) enregistre(s) pour le lot 2026-04-10 (seuil de survie: 2026-01-10)
+2026-11-18T12:33:23 | INFO    | hdd_rul.ingestion.landing    | lot 2026-04-10.csv traite -> /app/data/processed/2026-04-10.csv
+2026-11-18T12:33:29 | INFO    | prefect.flow_runs            | Beginning flow run 'melodic-elk' for flow 'daily_batch'
+
+rapport 2026-04-10_20261118T123232+0000.json : passed=True  quarantined_rows=1
+  AVERTISSEMENT  expect_column_values_to_not_be_known_failed_drive(serial_number)  ecarts=1  exemple=['2BJD2XYD']
+  expectation personnalisee evaluee : expect_column_values_to_be_valid_drive_serial -> oui
+  expectation personnalisee evaluee : expect_drive_failure_rate_to_be_below -> oui
+  expectation personnalisee evaluee : expect_column_values_to_not_be_known_failed_drive -> oui
+   batch_name   | rows |                    reason                    
+----------------+------+----------------------------------------------
+ 2026-04-10.csv |    1 | 1 disque(s) deja en panne qui reapparaissent
+(1 row)
+
+# Le disque écarté : 2BJD2XYD (WDC WUH721816ALE6L0), déclare en panne le 2025-10-14,
+# présent tous les jours jusqu'au 30 juin. Seul cas sur les 3 497 pannes de Q4 2025 à Q2 2026.

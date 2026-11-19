@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Données : jamais dans le dépôt (volumineuses et sous licence Backblaze).
+# ---------------------------------------------------------------------------
+data/
+*.zip
+*.parquet
+# Filet de sécurité : aucun fichier journalier Drive Stats (AAAA-MM-JJ.csv) ne
+# doit être commité, même déposé hors de data/ par erreur.
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.csv
+
+# ---------------------------------------------------------------------------
+# Sorties locales de MLflow et de Prefect
+# ---------------------------------------------------------------------------
+mlruns/
+mlartifacts/
+.prefect/
+gx/uncommitted/
+
+# Rapports de qualité, résumés d'entraînement et graphiques générés
+artifacts/
+
+# ---------------------------------------------------------------------------
+# Tests de charge : on garde les tableaux de mesures (ce sont des preuves),
+# pas les journaux d'exécution.
+# ---------------------------------------------------------------------------
+loadtest/results/**/*.log
+loadtest/results/**/*.html
+loadtest/results/**/*_stats_history.csv
+loadtest/results/**/*_failures.csv
+loadtest/results/**/*_exceptions.csv
+loadtest/results/**/res_*.txt
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Secrets et environnement local
+# ---------------------------------------------------------------------------
+.env
+.env.local
+
+# Documents de travail personnels, gardés en local mais hors du dépôt rendu
+notes importantes/
+5MLDE_ Mini-Projet [[]Rendu[]].html
+PLAN.md
+TODO.md
+SOUTENANCE.md
+docs/soutenance.*

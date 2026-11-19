@@ -1,0 +1,127 @@
+# Preuve 10 — dépendance indisponible : MLflow arrêté pendant l'exploitation
+# Date : 2026-11-18 11:38 -> 11:53 CET | commit : af6874c | pile Compose, champion v1
+# Logs des conteneurs en UTC. Réponses JSON tronquées à l'essentiel.
+#
+# Résumé :
+#  - l'API continue de prédire avec le champion déjà chargé en mémoire ;
+#  - un rechargement raté laisse le modèle en place (pas de perte de service) ;
+#  - un entraînement lancé pendant la panne retente, puis reprend seul au retour de MLflow,
+#    et la règle de mise en service s'applique normalement (challenger v6 rejeté) ;
+#  - ECARTS constatés à ce premier passage : /health reste « ok » sans MLflow,
+#    /admin/reload bloque plus de 200 s au lieu de renvoyer vite un 503, et
+#    l'entraînement planifié s'entraîne sur tout le bronze (sans as_of).
+#    Corrigés le même jour : voir « Après correction » en fin de fichier.
+
+$ docker compose stop mlflow                      # 11:38:41
+ Container hdd-rul-mlflow-1 Stopped
+
+$ curl -s localhost:8001/health
+{'status': 'ok', 'model_loaded': True} | database: {'enabled': True, 'reachable': True, 'error': None} | HTTP 200
+# MLflow n'est pas vérifié par /health : le modèle est en mémoire, l'état reste « ok ».
+
+$ curl -s -X POST localhost:8001/predict -d @loadtest/exemple_observation.json
+{'predicted_rul_days': 51.745, 'alert': False, 'model_version': '1', 'model_alias': 'champion'} | HTTP 200
+# HTTP 200 : la prédiction est servie, et tracée dans PostgreSQL (qui, lui, est disponible).
+
+$ curl -s -m 200 -X POST localhost:8001/admin/reload
+(aucune reponse en 200 s : curl abandonne, HTTP 000)
+# Le client MLflow retente 7 fois avec un délai croissant avant d'abandonner : l'appel bloque.
+$ curl -s localhost:8001/model
+{'available': True, 'model_version': '1', 'model_alias': 'champion', 'loaded_at': '2026-11-18T10:34:59+00:00'}
+# Le rechargement raté n'a pas retiré le modèle : même version, même loaded_at.
+
+$ uv run prefect deployment run 'train_pipeline/train-pipeline-nightly'   # 11:42:05
+Created flow run 'slick-foxhound'.
+└── UUID: 7ecd155e-183d-4227-9355-b74443d9f1e1
+└── Parameters: {'trigger': 'schedule', 'config_path': 'config/base.yaml'}
+└── Job Variables: {}
+└── Scheduled start time: 2026-11-18 11:42:06 CET (now)
+└── URL: http://localhost:4200/runs/flow-run/7ecd155e-183d-4227-9355-b74443d9f1e1
+
+$ docker compose logs prefect-runner   # train_pipeline seulement, filtre
+2026-11-18T10:42:16 | INFO    | prefect.flow_runs            | Beginning flow run 'slick-foxhound' for flow 'train_pipeline'
+2026-11-18T10:42:16 | INFO    | hdd_rul.features.labels      | labels: 580279/580279 lignes etiquetees (233260 pannes, 347019 sains), 0 censurees, 0 invalides
+2026-11-18T10:42:16 | INFO    | hdd_rul.features.labels      | fenetre d'entrainement resolue: 2025-10-01 -> 2026-06-30 (580279 lignes, as_of=2026-06-30)
+2026-11-18T10:42:16 | INFO    | hdd_rul.training.split       | split: coupure 2026-03-12 | train=378489 lignes / 13517 disques | valid=21529 lignes / 3151 disques | 180261 lignes ecartees pour eviter les fuites
+2026-11-18T10:42:17 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=6, connect=6, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:42:47 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=3, connect=3, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:46:24 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=0, connect=0, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:46:24 | INFO    | prefect.task_runs            | Task run failed with exception: MlflowException('API request to http://mlflow:5000/api/2.0/mlflow/experiments/get-by-name failed with exception HTTPConnectionPool(host
+2026-11-18T10:46:24 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=6, connect=6, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:46:54 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=3, connect=3, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:50:31 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=0, connect=0, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:50:31 | INFO    | prefect.task_runs            | Task run failed with exception: MlflowException('API request to http://mlflow:5000/api/2.0/mlflow/experiments/get-by-name failed with exception HTTPConnectionPool(host
+2026-11-18T10:50:31 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=6, connect=6, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:51:01 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=3, connect=3, read=7, redirect=7, status=7)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T10:52:38 | INFO    | hdd_rul.training.train       | entrainement de baseline_median sur 378489 lignes
+2026-11-18T10:52:38 | INFO    | hdd_rul.training.train       | entrainement de hist_gradient_boosting sur 378489 lignes
+2026-11-18T10:52:42 | INFO    | hdd_rul.training.train       | baseline_median: MAE=42.033 | MAE(<30j)=75.958 | rappel alerte=0.000
+2026-11-18T10:52:42 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:52:48 | INFO    | hdd_rul.training.train       | hist_gradient_boosting: MAE=25.828 | MAE(<30j)=46.939 | rappel alerte=0.019
+2026-11-18T10:52:49 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:52:49 | INFO    | prefect.flow_runs            | 2 candidats entraines en parallele
+2026-11-18T10:52:49 | INFO    | hdd_rul.training.train       | champion v1 reevalue sur la validation du challenger: MAE=25.264 | MAE(<30j)=44.542
+2026-11-18T10:52:50 | WARNING | hdd_rul.training.registry    | version 6 non promue (mae_lt30_gain_insuffisant:-0.0538<0.05)
+2026-11-18T10:52:50 | INFO    | hdd_rul.training.train       | entrainement 4d7ebfc4 termine: version 6 rejected (mae_lt30_gain_insuffisant:-0.0538<0.05)
+2026-11-18T10:52:50 | WARNING | hdd_rul.common.notifications | ALERTE[warning] Entrainement termine — Decision: rejected (mae_lt30_gain_insuffisant:-0.0538<0.05) | {'version': '6', 'decision': 'rejected', 'raison': 'mae_lt30_gai
+2026-11-18T10:52:50 | INFO    | prefect.task_runs            | Finished in state Completed()
+2026-11-18T10:52:51 | INFO    | prefect.flow_runs            | Finished in state Completed()   # fin du flow train_pipeline
+
+$ docker compose start mlflow                     # 11:52:26, sain
+$ curl -s -X POST localhost:8001/admin/reload
+{'available': True, 'model_version': '1', 'model_alias': 'champion', 'loaded_at': '2026-11-18T10:52:27+00:00'} | HTTP 200
+$ curl -s localhost:8001/health
+{'status': 'ok', 'model_loaded': True} | HTTP 200
+
+# Lecture : la reprise automatique tient à la durée des retries (7 relances HTTP du client MLflow,
+# soit ~4 min par tentative de tâche), puis aux nouvelles tentatives Prefect, pas aux délais de 2 à 16 s. Si la
+# panne avait dure plus longtemps, le flow aurait échoué et le hook on_failure aurait alerte,
+# comme pour le lot invalide (preuve 09).
+
+############################################################################
+# Après correction (18 novembre, 13:29) — même panne, comportement attendu
+############################################################################
+# Corrections : relances HTTP MLflow courtes (compose.yml : 2 relances, facteur 1, 30 s),
+# /health vérifie le registre, un rechargement raté garde le modèle servi et renvoie 503,
+# l'entraînement planifié se place au dernier lot traité (as_of).
+
+$ docker compose stop mlflow   # 13:29:12
+ Container hdd-rul-mlflow-1 Stopped 
+$ curl -s localhost:8001/health
+{'status': 'degraded', 'model_loaded': True, 'registry': {'enabled': True, 'reachable': False, 'error': 'ConnectionError'}} | HTTP 200
+  (repondu en 0.01 s)
+$ curl -s -X POST localhost:8001/admin/reload
+{"detail":"rechargement impossible: registre MLflow injoignable (MlflowException: ...) HTTP 503
+  (repondu en 2.96 s)
+$ curl -s localhost:8001/model  -> {'available': True, 'model_version': '1', 'model_alias': 'champion', 'loaded_at': '2026-11-18T12:28:59+00:00'}
+$ curl -s -X POST localhost:8001/predict -d @loadtest/exemple_observation.json  -> HTTP 200
+$ docker compose start mlflow
+ Container hdd-rul-mlflow-1 Started 
+  mlflow sain a 13:29:20
+$ curl -s localhost:8001/health  -> ok {'enabled': True, 'reachable': True, 'error': None}
+$ curl -s -X POST localhost:8001/admin/reload  -> HTTP 200
+
+$ uv run prefect deployment run 'train_pipeline/train-pipeline-nightly'   # MLflow toujours arrete, 13:29:35
+$ docker compose logs prefect-runner   # filtre
+2026-11-18T12:29:43 | INFO    | prefect.flow_runs            | Beginning flow run 'exuberant-snake' for flow 'train_pipeline'
+2026-11-18T12:29:43 | INFO    | prefect.flow_runs            | as_of non fourni : dernier lot traite, 2026-04-09
+2026-11-18T12:29:43 | INFO    | hdd_rul.features.labels      | fenetre d'entrainement resolue: 2025-10-01 -> 2026-04-09 (326198 lignes, as_of=2026-04-09)
+2026-11-18T12:29:43 | INFO    | hdd_rul.training.split       | split: coupure 2026-01-04 | train=207648 lignes / 12328 disques | valid=13811 lignes / 2982 disques | 104739 lignes ecartees pour eviter 
+2026-11-18T12:29:46 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=0, connect=0, read=2, redirect=2, status=2)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T12:29:46 | INFO    | prefect.task_runs            | Task run failed with exception: MlflowException('API request to http://mlflow:5000/api/2.0/mlflow/experiments/get-by-name failed with exc
+2026-11-18T12:29:49 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=0, connect=0, read=2, redirect=2, status=2)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T12:29:49 | INFO    | prefect.task_runs            | Task run failed with exception: MlflowException('API request to http://mlflow:5000/api/2.0/mlflow/experiments/get-by-name failed with exc
+2026-11-18T12:29:51 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=0, connect=0, read=2, redirect=2, status=2)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T12:29:51 | ERROR   | prefect.task_runs            | Task run failed with exception: MlflowException('API request to http://mlflow:5000/api/2.0/mlflow/experiments/get-by-name failed with exc
+2026-11-18T12:29:51 | ERROR   | prefect.task_runs            | Finished in state Failed('Task run encountered an exception MlflowException: API request to http://mlflow:5000/api/2.0/mlflow/experiments
+2026-11-18T12:29:52 | INFO    | prefect.flow_runs            | Running hook 'alert_on_failure' in response to entering state 'Failed'
+2026-11-18T12:29:52 | ERROR   | hdd_rul.common.notifications | ALERTE[critical] Echec du flow train_pipeline — Etat: FAILED — Flow run encountered an exception: MlflowException: API request to htt
+2026-11-18T12:29:53 | WARNING | urllib3.connectionpool       | Retrying (Retry(total=0, connect=0, read=2, redirect=2, status=2)) after connection broken by NameResolutionError(host='mlflow')
+2026-11-18T12:29:53 | ERROR   | prefect.task_runs            | Task run failed with exception: MlflowException('API request to http://mlflow:5000/api/2.0/mlflow/experiments/get-by-name failed with exc
+2026-11-18T12:29:53 | ERROR   | prefect.task_runs            | Finished in state Failed('Task run encountered an exception MlflowException: API request to http://mlflow:5000/api/2.0/mlflow/experiments
+
+# Lecture : 10 s entre le début du flow et l'alerte (avant : environ 4 min bloquées par
+# tentative). Les nouvelles tentatives Prefect sont visibles, puis l'échec propre déclenche
+# le hook on_failure.
+# Sans date explicite, la fenêtre s'arrête au dernier lot reçu (2026-04-09) et non
+# au 30 juin.
